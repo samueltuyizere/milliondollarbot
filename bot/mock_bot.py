@@ -131,13 +131,19 @@ def _check_manual_close_requests(symbol: str, price: float) -> None:
 
     for t in flagged:
         trade_id = t["id"]
-        if trade_id not in open_trades:
-            continue
-        pos = open_trades[trade_id]
+        if trade_id in open_trades:
+            pos = open_trades[trade_id]
+            del open_trades[trade_id]
+        else:
+            # Trade flagged but not in our dict (e.g. from a previous session)
+            pos = {
+                "direction": t.get("direction", "BUY"),
+                "entry":     t.get("entryPrice", price),
+                "lot_size":  t.get("lotSize", 0.0),
+            }
         pnl = calc_pnl(pos["direction"], pos["entry"], price, pos["lot_size"], symbol)
         report_trade_closed(trade_id, price, pnl)
         today_pnl += pnl
-        del open_trades[trade_id]
         log(
             "INFO",
             "mock",
