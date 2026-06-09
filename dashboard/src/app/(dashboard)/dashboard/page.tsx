@@ -182,13 +182,7 @@ export default function DashboardPage() {
             : <TrendingDown className="w-4 h-4" />}
           tone={pnlTone}
         />
-        <StatCard
-          label="Drawdown"
-          value={loading ? "—" : `${(stats?.drawdownPct ?? 0).toFixed(2)}%`}
-          sub="Max allowed: 4.5%"
-          icon={<BarChart2 className="w-4 h-4" />}
-          tone="neutral"
-        />
+        <DrawdownCard pct={stats?.drawdownPct ?? 0} loading={loading} />
         <StatCard
           label="Open Trades"
           value={loading ? "—" : String(stats?.openTrades ?? 0)}
@@ -427,6 +421,48 @@ export default function DashboardPage() {
   );
 }
 
+
+const MAX_DD = 4.5;
+
+function DrawdownCard({ pct, loading, className }: { pct: number; loading: boolean; className?: string }) {
+  const ratio   = Math.min(pct / MAX_DD, 1);
+  const danger  = pct > 3;
+  const warning = pct > 1.5 && !danger;
+
+  const barColor   = danger ? "var(--loss)" : warning ? "oklch(0.78 0.16 75)" : "var(--profit)";
+  const bgTint     = danger ? "bg-red-500/[0.06]" : warning ? "bg-amber-500/[0.06]" : "bg-card";
+  const valueColor = danger ? "text-red-400" : warning ? "text-amber-400" : "text-emerald-400";
+  const label      = danger ? "⚠ Critical — near limit" : warning ? "Caution — monitor closely" : "Healthy";
+
+  return (
+    <div className={cn(
+      "rounded-lg border border-border p-4 flex flex-col gap-2 min-w-0 transition-colors duration-500",
+      bgTint, className
+    )}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+          Drawdown
+        </span>
+        <BarChart2 className={cn("w-4 h-4 shrink-0 opacity-70", valueColor)} />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-end justify-between gap-2">
+          <p className={cn("text-2xl font-semibold price", loading ? "text-foreground" : valueColor)}>
+            {loading ? "—" : `${pct.toFixed(2)}%`}
+          </p>
+          <span className="text-xs text-muted-foreground tabular mb-0.5">max {MAX_DD}%</span>
+        </div>
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${ratio * 100}%`, background: barColor }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  );
+}
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
