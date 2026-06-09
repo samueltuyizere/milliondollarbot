@@ -163,7 +163,7 @@ export default function DashboardPage() {
           value={loading ? "—" : `$${(stats?.equity ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
           sub={stats?.balance ? `Balance $${stats.balance.toLocaleString()}` : undefined}
           icon={<DollarSign className="w-4 h-4" />}
-          tone="gold"
+          tone="neutral"
         />
         <StatCard
           label="Daily P&L"
@@ -188,7 +188,7 @@ export default function DashboardPage() {
             ? `Ping ${new Date(stats.lastPing).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
             : "No heartbeat"}
           icon={<Activity className="w-4 h-4" />}
-          tone={stats?.openTrades ? "gold" : "neutral"}
+          tone="neutral"
         />
         {/* 5th card — drawdown visual with color-coded bar */}
         <DrawdownCard pct={stats?.drawdownPct ?? 0} loading={loading} />
