@@ -26,9 +26,9 @@ from strategy.ema_pullback import check_signal
 from risk.risk_guard import RiskGuard
 from utils.mt5_client import (
     connect, disconnect, get_account_info, get_ohlcv,
-    calculate_lot_size, place_order, get_open_positions,
+    calculate_lot_size, place_order, get_open_positions, close_position,
 )
-from utils.db_writer import report_trade_opened, report_trade_closed, send_heartbeat
+from utils.db_writer import report_trade_opened, report_trade_closed, send_heartbeat, restore_session_state
 from utils.logger import log
 
 # ─── State ────────────────────────────────────────────────────────────────────
@@ -83,8 +83,7 @@ def main():
             # ── Dashboard command check ────────────────────────────────────────
             cmd = get_bot_command()
             if cmd == "STOPPED":
-                # Keep process alive — user can click Start from dashboard
-                send_heartbeat(equity, balance, today_pnl, peak_equity, len(open_positions(symbol=symbol)), "STOPPED")
+                _send_hb(peak_equity, cfg, status="STOPPED")
                 time.sleep(10)
                 continue
             if cmd in ("DAILY_LOCK", "ERROR"):
@@ -129,8 +128,13 @@ def main():
             # ── Monitor open positions ────────────────────────────────────────
             open_pos = get_open_positions(symbol=symbol)
             _check_closed_positions(open_pos)
+            manual_closed = _check_manual_close_requests(symbol, open_pos)
 
             # ── Strategy signal check ─────────────────────────────────────────
+            if manual_closed:
+                time.sleep(POLL_SECONDS)
+                continue
+
             if len(open_pos) >= cfg["max_open_trades"]:
                 time.sleep(POLL_SECONDS)
                 continue
@@ -149,6 +153,7 @@ def main():
             log("INFO", "strategy", f"Signal: {signal}")
 
             # ── Risk gate ─────────────────────────────────────────────────────
+            floating_pnl = sum(p.get("profit", 0.0) for p in open_pos)
             allowed, reason = guard.check_all(
                 entry=signal["entry"],
                 sl=signal["sl"],
@@ -156,6 +161,7 @@ def main():
                 direction=signal["direction"],
                 open_trades_count=len(open_pos),
                 equity=equity,
+                floating_pnl=floating_pnl,
             )
 
             if not allowed:
@@ -212,12 +218,13 @@ def main():
 def _send_hb(peak: float, cfg: dict, status: str = "RUNNING"):
     acct = get_account_info()
     if acct:
+        open_pos = get_open_positions(symbol=cfg.get("symbol", "XAUUSD"))
         send_heartbeat(
             equity=acct["equity"],
             balance=acct["balance"],
             daily_pnl=today_pnl,
             peak_equity=peak,
-            open_trades=0,
+            open_trades=len(open_pos),
             status=status,
         )
 
@@ -225,6 +232,45 @@ def _send_hb(peak: float, cfg: dict, status: str = "RUNNING"):
 def _update_open_trades(positions: list, acct: dict):
     global today_pnl
     today_pnl = sum(p["profit"] for p in positions)
+
+
+def _check_manual_close_requests(symbol: str, open_pos: list) -> bool:
+    """Check dashboard for trades flagged manualClose=true and close them via MT5. Returns True if any closed."""
+    from utils.db_writer import _session, DASHBOARD_URL
+    try:
+        r = _session.get(f"{DASHBOARD_URL}/api/trades?status=OPEN&limit=50", timeout=5)
+        flagged = [t for t in r.json().get("trades", []) if t.get("manualClose")]
+    except Exception as e:
+        log("WARNING", "main", f"Manual close check failed: {e}")
+        return False
+
+    if not flagged:
+        return False
+
+    pos_by_ticket = {p["ticket"]: p for p in open_pos}
+    closed_any = False
+
+    for t in flagged:
+        trade_id = t["id"]
+        mt5_ticket = t.get("mt5Ticket")
+
+        if mt5_ticket and mt5_ticket in pos_by_ticket:
+            pos = pos_by_ticket[mt5_ticket]
+            success = close_position(
+                ticket=mt5_ticket,
+                symbol=symbol,
+                direction=t["direction"],
+                lot_size=pos["volume"],
+            )
+            if success:
+                del open_trade_map[mt5_ticket]
+                closed_any = True
+        else:
+            # Not found in MT5 — close in DB only (already closed at broker)
+            report_trade_closed(trade_id, t.get("entryPrice", 0), 0)
+            closed_any = True
+
+    return closed_any
 
 
 def _check_closed_positions(current_open: list):

@@ -336,6 +336,7 @@ def main():
                 direction=signal["direction"],
                 open_trades_count=len(open_trades),
                 equity=equity,
+                floating_pnl=_floating_pnl(symbol, price),
             )
 
             if not allowed:

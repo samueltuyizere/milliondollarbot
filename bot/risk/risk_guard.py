@@ -36,14 +36,16 @@ class RiskGuard:
         direction: str,
         open_trades_count: int,
         equity: float,
+        floating_pnl: float = 0.0,
     ) -> Tuple[bool, str]:
         """
         Returns (allowed: bool, reason: str).
         reason is empty string if allowed.
+        floating_pnl: unrealized P&L of currently open positions.
         """
         checks = [
             self._check_daily_lock,
-            lambda: self._check_daily_loss(equity),
+            lambda: self._check_daily_loss(equity, floating_pnl),
             lambda: self._check_drawdown(equity),
             lambda: self._check_max_open_trades(open_trades_count),
             lambda: self._check_rr(entry, sl, tp, direction),
@@ -67,12 +69,13 @@ class RiskGuard:
             return False, "Daily loss lock is active"
         return True, ""
 
-    def _check_daily_loss(self, equity: float) -> Tuple[bool, str]:
+    def _check_daily_loss(self, equity: float, floating_pnl: float = 0.0) -> Tuple[bool, str]:
         max_loss_usd = self.balance * (self.cfg["max_daily_loss_pct"] / 100)
-        today_pnl = self._get_today_pnl()
-        if today_pnl <= -max_loss_usd:
+        realized_pnl = self._get_today_pnl()
+        total_daily_pnl = realized_pnl + floating_pnl
+        if total_daily_pnl <= -max_loss_usd:
             self._activate_daily_lock()
-            return False, f"Daily loss limit hit: ${today_pnl:.2f} / -${max_loss_usd:.2f}"
+            return False, f"Daily loss limit hit: ${total_daily_pnl:.2f} (realized ${realized_pnl:.2f} + floating ${floating_pnl:.2f}) / limit -${max_loss_usd:.2f}"
         return True, ""
 
     def _check_drawdown(self, equity: float) -> Tuple[bool, str]:

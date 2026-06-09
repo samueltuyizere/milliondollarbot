@@ -37,6 +37,11 @@ export async function POST(req: Request) {
       });
     }
 
+    // On start: clear the daily lock flag so the bot doesn't re-lock immediately
+    if (command === "start") {
+      await prisma.riskRules.updateMany({ data: { dailyLockActive: false } });
+    }
+
     await logAudit({ action: `bot.${command}`, resource: "bot_status" });
     await logSystem({ level: "INFO", source: "api", message: `Bot command: ${command} → ${newStatus}` });
 
