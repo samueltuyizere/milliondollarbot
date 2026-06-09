@@ -131,8 +131,6 @@ export default function DashboardPage() {
   const balance = stats?.balance ?? 500000;
   const pnlPct = stats ? (stats.dailyPnl / balance) * 100 : 0;
   const pnlTone = !stats ? "neutral" : stats.dailyPnl > 0 ? "profit" : stats.dailyPnl < 0 ? "loss" : "neutral";
-  const ddTone = !stats ? "neutral" : stats.drawdownPct > 3 ? "loss" : stats.drawdownPct > 1.5 ? "warning" : "profit";
-
   const equitySeries = useMemo(
     () => buildEquitySeries(chartTrades, balance, stats?.equity),
     [chartTrades, balance, stats?.equity]
@@ -157,7 +155,7 @@ export default function DashboardPage() {
       )}
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="Equity"
           value={loading ? "—" : `$${(stats?.equity ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
@@ -190,8 +188,7 @@ export default function DashboardPage() {
           icon={<Activity className="w-4 h-4" />}
           tone="neutral"
         />
-        {/* 5th card — drawdown visual with color-coded bar */}
-        <DrawdownCard pct={stats?.drawdownPct ?? 0} loading={loading} />
+
       </div>
 
       {/* Charts */}
@@ -406,70 +403,6 @@ export default function DashboardPage() {
   );
 }
 
-const MAX_DD = 4.5;
-
-function DrawdownCard({ pct, loading, className }: { pct: number; loading: boolean; className?: string }) {
-  const ratio = Math.min(pct / MAX_DD, 1);
-  const danger  = pct > 3;
-  const warning = pct > 1.5 && !danger;
-
-  const barColor = danger
-    ? "var(--loss)"
-    : warning
-    ? "oklch(0.78 0.16 75)"
-    : "var(--profit)";
-
-  const borderColor = danger
-    ? "border-red-500/30"
-    : warning
-    ? "border-amber-400/30"
-    : "border-border";
-
-  const bgTint = danger
-    ? "bg-red-500/[0.04]"
-    : warning
-    ? "bg-amber-400/[0.04]"
-    : "bg-card";
-
-  const valueColor = danger
-    ? "text-[--loss]"
-    : warning
-    ? "text-amber-400"
-    : "text-[--profit]";
-
-  return (
-    <div className={cn(
-      "rounded-lg border p-4 flex flex-col gap-2 min-w-0 transition-colors duration-500",
-      bgTint, borderColor, className
-    )}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
-          Drawdown
-        </span>
-        <BarChart2 className="w-4 h-4 text-muted-foreground/60 shrink-0" />
-      </div>
-      <div className="space-y-2">
-        <div className="flex items-end justify-between gap-2">
-          <p className={cn("text-2xl font-semibold price", loading ? "text-foreground" : valueColor)}>
-            {loading ? "—" : `${pct.toFixed(2)}%`}
-          </p>
-          <span className="text-xs text-muted-foreground tabular mb-0.5">
-            max {MAX_DD}%
-          </span>
-        </div>
-        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${ratio * 100}%`, background: barColor }}
-          />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {danger ? "⚠ Critical — near limit" : warning ? "Caution — monitor closely" : "Healthy"}
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
