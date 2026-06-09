@@ -70,10 +70,10 @@ export function buildOutcomeBreakdown(trades: TradeRow[]): OutcomeSlice[] {
   };
 
   const colors: Record<string, string> = {
-    Wins: CHART_COLORS.profit,
+    Wins: CHART_COLORS.gold,
     Losses: CHART_COLORS.loss,
-    "Break-even": CHART_COLORS.breakeven,
-    Open: CHART_COLORS.open,
+    "Break-even": CHART_COLORS.open,
+    Open: "oklch(0.55 0.06 260)",
   };
 
   return Object.entries(counts)

@@ -22,29 +22,59 @@
 
 ---
 
-## 6.2 Authentication & access control
+## 6.2 Authentication & RBAC
 
 ### Configuration — `src/lib/auth.ts`
-- **Credentials provider** only. `authorize()` looks up the `User` by email and verifies the password with `bcrypt.compare` against `passwordHash`.
-- **JWT sessions** (no DB session store). The `jwt` callback copies `id` and `role` onto the token; the `session` callback exposes them on `session.user`.
+- **Credentials provider** only. `authorize()` looks up the `User` by email, verifies the password with `bcrypt.compare`, and loads the user's role + all its permissions from the DB.
+- **JWT sessions** (no DB session store). The `jwt` callback embeds `id`, `role` (role name string), `permissions` (array of permission codes), and `passwordChangeRequired` on the token. The `session` callback exposes all four on `session.user`.
+- Permissions are resolved **at login** — no per-request DB lookups on the client.
 - Custom sign‑in page: `/login`. Exports `handlers`, `auth`, `signIn`, `signOut`.
-- Route handler: `src/app/api/auth/[...nextauth]/route.ts` re‑exports `GET`/`POST`.
 
 ### Route protection — `src/proxy.ts`
 ```
-if path is /api/auth/* or a bot API → allow (public)
-if path is /login → redirect to /dashboard when already logged in
-if not logged in → redirect to /login
-else → allow
+Public (no session): /api/auth/*, /api/bot/heartbeat, /api/trades/*, /api/logs/system
+/login              → redirect to /dashboard when already logged in
+/settings/users     → requires users.view permission (403 page if missing)
+/settings/roles     → requires roles.view permission
+/api/users          → requires users.view permission (403 JSON if missing)
+/api/roles          → requires roles.view permission
+/api/permissions    → requires roles.view permission
+everything else     → requires authentication
 ```
-**Public (no session) routes:** `/api/bot/heartbeat`, `/api/trades` (entire subtree), `/api/logs/system`. These exist so the bot can post without a session.
 
-### Roles
-- `User.role` is `ADMIN` or `TRADER`. The seeded user is `ADMIN`.
-- ⚠️ Roles are **cosmetic** — the UI shows "Administrator"/"Trader", but **no route enforces RBAC**; any authenticated user has full access. (Tracked in [Known Issues](./10-known-issues-and-roadmap.md).)
+### Permission model — `src/lib/permissions.ts`
+15 granular permission codes across 7 categories:
+
+| Category | Codes |
+|----------|-------|
+| `dashboard` | `dashboard.view` |
+| `trades` | `trades.view`, `trades.close` |
+| `bot` | `bot.view`, `bot.control` |
+| `config` | `config.view`, `config.edit` |
+| `risk` | `risk.view`, `risk.edit` |
+| `users` | `users.view`, `users.create`, `users.edit`, `users.delete` |
+| `roles` | `roles.view`, `roles.manage` |
+
+**ADMIN** receives all 15. **TRADER** receives 6 (view-only: dashboard, trades, bot, config, risk + trades.close).
+
+Server-side helpers: `requirePermission(code)` and `requireAllPermissions(...codes)` — used in every protected API route handler.
+
+### TypeScript types — `src/types/next-auth.d.ts`
+Module augmentation adds `role: string`, `permissions: string[]`, and `passwordChangeRequired: boolean` to `Session.user` and `JWT`.
+
+### Client hook — `src/hooks/use-permissions.ts`
+`usePermissions()` returns `{ role, permissions, can(code), canAny(...codes), canAll(...codes) }` — reads from `useSession()`.
+
+### Default roles
+| Role | System | Permissions |
+|------|--------|-------------|
+| `ADMIN` | ✓ locked | All 15 |
+| `TRADER` | ✗ editable | 6 (view + trades.close) |
+
+System roles (`isSystem: true`) cannot be deleted. Additional roles can be created freely from `/settings/roles`.
 
 ### Seeded login
-`admin@aitrader.local` / `admin1234` (created by `prisma/seed.ts`, bcrypt cost 12), along with the Phase‑1 account, bot config, strategy, risk rules, and an initial STOPPED `BotStatus`.
+`admin@aitrader.local` / `admin1234` (bcrypt cost 12, `passwordChangeRequired: false`). Role: `ADMIN`.
 
 ---
 
@@ -54,12 +84,15 @@ else → allow
 |-------|------|-----------|---------|
 | `/` | `app/page.tsx` | Server | Redirects to `/dashboard` |
 | `/login` | `app/login/page.tsx` | Client | Credentials form + animated XAUUSD hero (outside the app shell) |
-| `/dashboard` | `app/(dashboard)/dashboard/page.tsx` | Client | KPI cards, equity area chart, outcome donut, drawdown bar, recent trades with **live floating P&L** + manual‑close dialog. Polls every 5 s; price every 4 s |
-| `/trades` | `app/(dashboard)/trades/page.tsx` | Client | Full trade history: summary pills, All/Open/Closed filter, pagination (20/page), manual close |
+| `/dashboard` | `app/(dashboard)/dashboard/page.tsx` | Client | 5 KPI cards (Equity, Daily P&L, Drawdown, Open Trades, Drawdown visual), equity area chart, outcome donut, recent trades table with **live floating P&L** + row-click detail modal. Polls every 5 s; price every 4 s |
+| `/trades` | `app/(dashboard)/trades/page.tsx` | Client | Full trade history: summary pills, All/Open/Closed filter, pagination (20/page), row-click detail modal |
 | `/calendar` | `app/(dashboard)/calendar/page.tsx` | Client | Tabs: News Events (CRUD) + Bank Holidays (CRUD) |
 | `/logs` | `app/(dashboard)/logs/page.tsx` | Client | Tabs: System (level filter), Trade, Audit logs |
-| `/bot` | `app/(dashboard)/bot/page.tsx` | Server | Redirect → `/dashboard?panel=bot` (opens the modal) |
-| `/config` | `app/(dashboard)/config/page.tsx` | Server | Redirect → `/dashboard?panel=config` (opens the modal) |
+| `/settings/users` | `app/(dashboard)/settings/users/page.tsx` | Client | User management table — create/edit/delete/activate with role assignment. Requires `users.view` |
+| `/settings/roles` | `app/(dashboard)/settings/roles/page.tsx` | Client | Role cards with expandable permission list; create/edit modal with per-category checkbox grid. Requires `roles.view` |
+| `/403` | `app/403/page.tsx` | Server | Access-denied page (redirected to by `proxy.ts`) |
+| `/bot` | `app/(dashboard)/bot/page.tsx` | Server | Redirect → `/dashboard?panel=bot` |
+| `/config` | `app/(dashboard)/config/page.tsx` | Server | Redirect → `/dashboard?panel=config` |
 
 All `(dashboard)` pages are wrapped by `app/(dashboard)/layout.tsx` → `AppShell`.
 
@@ -71,16 +104,15 @@ All `(dashboard)` pages are wrapped by `app/(dashboard)/layout.tsx` → `AppShel
 | Component | Responsibility |
 |-----------|----------------|
 | `AppShell` | Hosts `ModalProvider`, sidebar, header, main content, `PanelUrlSync`, `AppModals`. Persists sidebar‑collapsed in `localStorage` (`aitrader_sidebar_collapsed`) |
-| `Sidebar` | Route nav (Dashboard, Trades, Calendar, Logs) + **modal triggers** (Bot Control, Configuration); user avatar/role; collapsible |
-| `Header` | Page title, `PriceTicker`, `ThemeToggle`, `BotStatusPill` (with `BotModeBadge`), user dropdown (sign out) |
+| `Sidebar` | **Trading** section (Dashboard, Trades, Calendar, Logs) + modal triggers (Bot Control, Configuration) + **Settings** section (Users, Roles — filtered by permissions via `usePermissions`); user avatar/role; collapsible |
+| `Header` | Page title (with prefix-aware lookup for `/settings/*`), `PriceTicker`, `ThemeToggle`, `BotStatusPill` (with `BotModeBadge`), user dropdown |
 | `PriceTicker` | Polls `/api/market/price` every 15 s; shows spot price + day‑change %, flashes on change |
-| `ThemeToggle` | Light/dark switch via `next-themes` (mount‑guarded to avoid hydration mismatch) |
-| `AppModals` | Renders the Bot Control and Configuration dialogs |
+| `ThemeToggle` | Light/dark switch via `next-themes` |
+| `AppModals` | Bot Control and Configuration dialogs |
 | `PanelUrlSync` | Reads `?panel=bot|config`, opens the corresponding modal, then cleans the URL |
 
 ### Modal system
 - `src/context/modal-context.tsx` — `ModalProvider` + `useModals()`, state `modal: "bot" | "config" | null`.
-- Sidebar/header items and the `?panel=` query all funnel into the same provider, so Bot Control and Configuration open as **modals** rather than full pages.
 
 ### Feature panels
 | Component | Responsibility |
@@ -91,18 +123,38 @@ All `(dashboard)` pages are wrapped by `app/(dashboard)/layout.tsx` → `AppShel
 ### Charts (`src/components/charts/`, data in `src/lib/charts/trade-stats.ts`)
 | Component | Shows |
 |-----------|-------|
-| `EquityAreaChart` | Cumulative equity curve (`buildEquitySeries`) |
-| `TradeOutcomeDonut` | Win/loss/BE/open breakdown with win‑rate center (`buildOutcomeBreakdown`, `calcWinRate`) |
+| `EquityAreaChart` | Cumulative equity curve (`buildEquitySeries`). Height: 340px |
+| `TradeOutcomeDonut` | Win/loss/BE/open breakdown with win‑rate center (`buildOutcomeBreakdown`, `calcWinRate`). Legend centered below chart. **Win color = gold** (brand primary) |
 | `ChartPanel` | Shared card wrapper + empty‑state |
 
+**Chart colors:** Wins → gold (`oklch(0.78 0.16 75)`), Losses → red, Break-even → muted, Open → blue-muted.
+
+### Trade detail modal (`src/components/ui/trade-detail-modal.tsx`)
+Clicking any trade row on `/dashboard` or `/trades` opens a detail modal showing:
+- Direction icon + symbol + status badge
+- P&L hero — floating (live, with pulse dot) for open trades, realized for closed
+- Details grid: lot size, entry, close price (if closed), SL (red), TP (green), R:R ratio, opened/closed timestamps
+- **Close position button** (open trades only) — triggers the confirm dialog
+
+### Dashboard KPI cards
+5 cards in `grid-cols-2 lg:grid-cols-5`:
+1. **Equity** — current equity vs balance
+2. **Daily P&L** — realized + % of balance
+3. **Drawdown** — % with tone coloring
+4. **Open Trades** — count + last ping
+5. **Drawdown visual** — mini progress bar, status label, border/bg tint changes color at 3 severity levels:
+   - 0–1.5% → green "Healthy"
+   - 1.5–3% → amber "Caution — monitor closely"
+   - 3–4.5% → red "⚠ Critical — near limit"
+
 ### UI primitives (`src/components/ui/`)
-`alert-banner`, `bot-mode-badge`, `status-badge`, `stat-card`, `section-header`, `field-row`, `empty-state`, `dialog`, plus shadcn primitives (`button`, `input`, `switch`, `tabs`, `table`, `select`, `textarea`, …) and `sonner` toasts.
+`alert-banner`, `bot-mode-badge`, `status-badge`, `stat-card`, `section-header`, `trade-detail-modal`, `field-row`, `empty-state`, `dialog`, `checkbox`, plus shadcn primitives (`button`, `input`, `switch`, `tabs`, `select`, `textarea`, …) and `sonner` toasts.
 
 ---
 
 ## 6.5 API routes (complete)
 
-**Legend:** 🔓 Public (bot, no session) · 🔒 Protected (session required).
+**Legend:** 🔓 Public (bot, no session) · 🔒 Session required · 🛡 Permission required
 
 ### Auth
 | Method | Route | | Purpose |
@@ -112,24 +164,24 @@ All `(dashboard)` pages are wrapped by `app/(dashboard)/layout.tsx` → `AppShel
 ### Bot
 | Method | Route | | Request → Response |
 |--------|-------|---|--------------------|
-| GET | `/api/bot/status` | 🔒 | → `{ status: BotStatus | defaults }` |
+| GET | `/api/bot/status` | 🔒 | → `{ status: BotStatus \| defaults }` |
 | POST | `/api/bot/heartbeat` | 🔓 | `{ status?, equity?, balance?, dailyPnl?, peakEquity?, drawdownPct?, openTrades?, errorMsg?, botMode? }` → `{ ok: true }`; upserts latest `BotStatus` |
-| POST | `/api/bot/control` | 🔒 | `{ command: "start"|"stop"|"pause"|"resume" }` → `{ ok, status }`; blocks non‑start while `DAILY_LOCK`; writes audit + system log |
+| POST | `/api/bot/control` | 🔒 | `{ command: "start"\|"stop"\|"pause"\|"resume" }` → `{ ok, status }`; blocks non‑start while `DAILY_LOCK`; clears `daily_lock_active` on start; writes audit + system log |
 
 ### Trades
 | Method | Route | | Request → Response |
 |--------|-------|---|--------------------|
 | GET | `/api/trades` | 🔓 | `?limit=50&status=OPEN` → `{ trades: Trade[] }` |
-| POST | `/api/trades` | 🔓 | `{ accountId, direction, entryPrice, stopLoss, takeProfit, lotSize, symbol?, mt5Ticket? }` → `{ ok, trade }`; creates `trade_logs` "OPENED" |
-| POST | `/api/trades/[id]/close` | 🔓 | `{ closePrice, pnl?, commission?, swap? }` → `{ ok, trade }`; status set from P&L (WIN/LOSS/BE) |
-| POST | `/api/trades/[id]/manual-close` | 🔒 | → `{ ok }`; sets `manualClose: true` for the bot to honour |
+| POST | `/api/trades` | 🔓 | `{ accountId, direction, entryPrice, stopLoss, takeProfit, lotSize, symbol?, mt5Ticket? }` → `{ ok, trade }` |
+| POST | `/api/trades/[id]/close` | 🔓 | `{ closePrice, pnl?, commission?, swap? }` → `{ ok, trade }` |
+| POST | `/api/trades/[id]/manual-close` | 🔒 | → `{ ok }`; sets `manualClose: true` for bot to honour |
 
 ### Config
 | Method | Route | | Fields |
 |--------|-------|---|--------|
-| GET/PUT | `/api/config/bot` | 🔒 | `longOnly, sessionStart, sessionEnd` (audit `config.bot.update`) |
-| GET/PUT | `/api/config/risk` | 🔒 | `riskPerTradePct, maxDailyLossPct, maxDrawdownPct, minRR, maxOpenTrades` (audit `config.risk.update`) |
-| GET/PUT | `/api/config/strategy` | 🔒 | `emaFast, emaSlow, rsiPeriod, rsiOversold, atrPeriod, atrMultiSl` (audit `config.strategy.update`; `timeframe` not updatable) |
+| GET/PUT | `/api/config/bot` | 🔒 | `longOnly, sessionStart, sessionEnd` |
+| GET/PUT | `/api/config/risk` | 🔒 | `riskPerTradePct, maxDailyLossPct, maxDrawdownPct, minRR, maxOpenTrades` |
+| GET/PUT | `/api/config/strategy` | 🔒 | `emaFast, emaSlow, rsiPeriod, rsiOversold, atrPeriod, atrMultiSl` |
 
 ### Logs
 | Method | Route | | |
@@ -149,26 +201,41 @@ All `(dashboard)` pages are wrapped by `app/(dashboard)/layout.tsx` → `AppShel
 ### Market
 | Method | Route | | Response |
 |--------|-------|---|----------|
-| GET | `/api/market/price` | 🔒 | `{ symbol, price, refPrice, previousClose, change, changePct, currency, marketState, fetchedAt }` (+ optional `stale`) |
+| GET | `/api/market/price` | 🔒 | `{ symbol, price, refPrice, previousClose, change, changePct, currency, marketState, fetchedAt }` |
 
-**Price route detail:** `price` is **spot** gold from `api.gold-api.com/price/XAU` (matches TradingView); `refPrice` is the **futures** `GC=F` price from Yahoo (used to value open positions, since the bot trades futures); `changePct` is Yahoo's day‑change (basis cancels in % terms). Results are cached in‑memory for 15 s, with stale‑fallback and a Yahoo‑only fallback if the spot source is down.
+**Price route:** `price` = spot gold from `api.gold-api.com`; `refPrice` = futures `GC=F` from Yahoo (used for floating P&L). Results cached 15 s with stale-fallback.
+
+### RBAC
+| Method | Route | | |
+|--------|-------|---|---|
+| GET | `/api/permissions` | 🛡 roles.view | All permission codes, grouped by category |
+| GET | `/api/roles` | 🛡 roles.view | All roles with permissions + user count |
+| POST | `/api/roles` | 🛡 roles.manage | Create role: `{ name, description?, permissionIds? }` |
+| GET | `/api/roles/[id]` | 🛡 roles.view | Role detail |
+| PUT | `/api/roles/[id]` | 🛡 roles.manage | Update description + permission set (`set` semantics) |
+| DELETE | `/api/roles/[id]` | 🛡 roles.manage | Delete (blocked if system role or has users) |
+| GET | `/api/users` | 🛡 users.view | All users (no passwordHash) |
+| POST | `/api/users` | 🛡 users.create | Create: `{ email, name?, roleId, password? }` (default password `Password1!`, `passwordChangeRequired: true`) |
+| GET | `/api/users/[id]` | 🛡 users.view | User detail |
+| PUT | `/api/users/[id]` | 🛡 users.edit | Update name/email/role/isActive/password |
+| DELETE | `/api/users/[id]` | 🛡 users.delete | Delete (cannot delete self) |
 
 ---
 
 ## 6.6 Live floating P&L & manual close
 
 On `/dashboard` and `/trades`:
-- The page polls `/api/market/price` every 4 s and computes **floating P&L** for each open trade using `(refPrice − entry) × lot × 100` (negated for SELL) — i.e. the same formula and the same **futures** price the bot uses, so there's no spot‑vs‑futures basis distortion.
-- Open rows show a pulsing "live" dot; the section header shows a combined floating total.
-- The **Close** button opens a custom themed confirmation dialog (symbol, direction, lot, entry, market price, floating P&L) → `POST /api/trades/{id}/manual-close`. The mock bot then closes the position at market on its next poll.
+- Polls `/api/market/price` every 4 s; computes floating P&L as `(refPrice − entry) × lot × 100` (negated for SELL) — same formula and same futures price the bot uses.
+- Open rows show a pulsing "live" dot; dashboard header shows combined floating total.
+- Clicking any trade row opens `TradeDetailModal` with full trade details. Open trades show a **Close position** button → `POST /api/trades/{id}/manual-close`. The mock bot closes the position at market on its next poll. For live trading, MT5 can also be used directly.
 
 ---
 
 ## 6.7 Theming
 
-- `ThemeProvider` (in `src/components/providers.tsx`): `attribute="class"`, `defaultTheme="dark"`, `enableSystem`, `disableTransitionOnChange`.
-- `globals.css` defines an **OKLCH** palette: light tokens under `:root`, dark tokens under `.dark`, mapped to Tailwind tokens via `@theme inline`. Trading‑specific tokens: `--profit`, `--loss`, `--gold`, `--surface`, `--shell`.
-- The toggle lives in the header. Components use semantic tokens (`bg-card`, `text-foreground`, `border-border`, …) so they adapt automatically; theme‑sensitive accents (amber/emerald badges, alert banners) carry explicit `dark:` variants for contrast in both modes.
+- `ThemeProvider`: `attribute="class"`, `defaultTheme="dark"`, `enableSystem`, `disableTransitionOnChange`.
+- `globals.css` defines an **OKLCH** palette: light/dark tokens, mapped via `@theme inline`. Trading‑specific tokens: `--profit`, `--loss`, `--gold`, `--surface`, `--shell`.
+- Components use semantic tokens (`bg-card`, `text-foreground`, `border-border`, …); theme‑sensitive accents carry explicit `dark:` variants.
 
 ---
 
@@ -176,12 +243,14 @@ On `/dashboard` and `/trades`:
 
 | Type | Purpose |
 |------|---------|
-| `BotState`, `TradeDirection`, `TradeStatus`, `LogLevel`, `BotMode` | String unions mirroring DB enums (+ `BotMode = "mock" | "live"`) |
-| `DashboardStats` | Heartbeat‑derived stats for the dashboard (status, equity, balance, dailyPnl, drawdownPct, openTrades, lastPing, errorMsg, botMode?) |
-| `TradeRow` | Trade as rendered in tables (id, symbol, direction, prices, lotSize, status, times, pnl?, manualClose?) |
-| `RiskConfig`, `StrategyConfigData`, `BotConfigData` | Shapes for the config panels |
+| `BotState`, `TradeDirection`, `TradeStatus`, `LogLevel`, `BotMode` | String unions mirroring DB enums |
+| `DashboardStats` | Heartbeat-derived stats (status, equity, balance, dailyPnl, drawdownPct, openTrades, lastPing, errorMsg, botMode?) |
+| `TradeRow` | Trade as rendered in tables (id, symbol, direction, prices, lotSize, status, times, closePrice?, pnl?, manualClose?) |
+| `RiskConfig`, `StrategyConfigData`, `BotConfigData` | Config panel shapes |
 
-Chart helpers add `EquityPoint`, `OutcomeSlice`, and `CHART_COLORS` in `src/lib/charts/trade-stats.ts`.
+Chart helpers: `EquityPoint`, `OutcomeSlice`, `CHART_COLORS` in `src/lib/charts/trade-stats.ts`.
+
+NextAuth augmentation: `src/types/next-auth.d.ts` extends `Session.user` with `role`, `permissions[]`, `passwordChangeRequired`.
 
 ---
 

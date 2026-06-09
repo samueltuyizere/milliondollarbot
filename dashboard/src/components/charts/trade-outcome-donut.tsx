@@ -52,55 +52,52 @@ export function TradeOutcomeDonut({ slices, trades, loading }: TradeOutcomeDonut
   const winRate = calcWinRate(trades);
 
   return (
-    <ChartPanel
-      title="Trade outcomes"
-      subtitle="Wins, losses & open positions"
-      legend={
-        slices.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+    <ChartPanel title="Trade outcomes" subtitle="Wins, losses & open positions">
+      {loading ? (
+        <EmptyChart>Loading chart…</EmptyChart>
+      ) : total === 0 ? (
+        <EmptyChart>No trades to chart yet.</EmptyChart>
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative h-[300px] w-full">
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={slices}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="62%"
+                  outerRadius="88%"
+                  paddingAngle={2}
+                  stroke="transparent"
+                >
+                  {slices.map((slice) => (
+                    <Cell key={slice.name} fill={slice.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<DonutTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            <DonutCenter winRate={winRate} total={total} />
+          </div>
+
+          {/* Legend — centered at bottom */}
+          <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-1.5 pb-1">
             {slices.map((s) => (
               <span
                 key={s.name}
-                className="inline-flex items-center gap-1.5 text-[10px] text-muted-foreground"
+                className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground"
               >
                 <span
-                  className="h-2 w-2 rounded-full shrink-0"
+                  className="h-2.5 w-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: s.color }}
                 />
                 {s.name}
               </span>
             ))}
           </div>
-        ) : undefined
-      }
-    >
-      {loading ? (
-        <EmptyChart>Loading chart…</EmptyChart>
-      ) : total === 0 ? (
-        <EmptyChart>No trades to chart yet.</EmptyChart>
-      ) : (
-        <div className="relative h-[300px]">
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={slices}
-                dataKey="value"
-                nameKey="name"
-                cx="50%"
-                cy="50%"
-                innerRadius="62%"
-                outerRadius="88%"
-                paddingAngle={2}
-                stroke="transparent"
-              >
-                {slices.map((slice) => (
-                  <Cell key={slice.name} fill={slice.color} />
-                ))}
-              </Pie>
-              <Tooltip content={<DonutTooltip />} />
-            </PieChart>
-          </ResponsiveContainer>
-          <DonutCenter winRate={winRate} total={total} />
         </div>
       )}
     </ChartPanel>

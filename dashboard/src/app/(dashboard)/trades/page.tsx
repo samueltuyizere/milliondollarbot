@@ -7,6 +7,15 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { TradeStatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
+import { TradeDetailModal } from "@/components/ui/trade-detail-modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { TradeRow } from "@/types";
 
 type Filter = "ALL" | "OPEN" | "CLOSED";
@@ -31,6 +40,8 @@ export default function TradesPage() {
   const [loading, setLoading]   = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [closeTarget, setCloseTarget] = useState<TradeRow | null>(null);
+  const [detailTrade, setDetailTrade] = useState<TradeRow | null>(null);
   const [page, setPage] = useState(1);
 
   const fetchTrades = useCallback(async () => {
@@ -49,11 +60,12 @@ export default function TradesPage() {
     return () => clearInterval(id);
   }, [fetchTrades]);
 
-  async function requestManualClose(id: string) {
-    if (!confirm("Close this position at market price?")) return;
-    setClosingId(id);
+  async function confirmManualClose() {
+    if (!closeTarget) return;
+    setClosingId(closeTarget.id);
+    setCloseTarget(null);
     try {
-      await fetch(`/api/trades/${id}/manual-close`, { method: "POST" });
+      await fetch(`/api/trades/${closeTarget.id}/manual-close`, { method: "POST" });
       await fetchTrades();
     } finally {
       setClosingId(null);
@@ -168,8 +180,9 @@ export default function TradesPage() {
                   {trades.map((t) => (
                     <tr
                       key={t.id}
+                      onClick={() => setDetailTrade(t)}
                       className={cn(
-                        "transition-colors",
+                        "transition-colors cursor-pointer",
                         t.direction === "BUY"
                           ? "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.09]"
                           : "bg-red-500/[0.04]     hover:bg-red-500/[0.09]"
@@ -210,7 +223,7 @@ export default function TradesPage() {
                       <td className="px-4 py-2.5 text-right">
                         <TradeStatusBadge status={t.status} />
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         {t.status === "OPEN" && (
                           t.manualClose ? (
                             <span className="text-[10px] text-muted-foreground italic">Closing…</span>
@@ -219,7 +232,7 @@ export default function TradesPage() {
                               variant="ghost"
                               size="sm"
                               disabled={closingId === t.id}
-                              onClick={() => requestManualClose(t.id)}
+                              onClick={() => setCloseTarget(t)}
                               className="h-6 px-2 text-[10px] text-red-400 hover:text-red-400 hover:bg-red-400/10 gap-1"
                             >
                               <X className="w-3 h-3" /> Close
@@ -288,6 +301,53 @@ export default function TradesPage() {
           </div>
         )}
       </div>
+
+      {/* Trade detail modal */}
+      <TradeDetailModal
+        trade={detailTrade}
+        closingId={closingId}
+        onClose={() => setDetailTrade(null)}
+        onRequestClose={(t) => setCloseTarget(t)}
+      />
+
+      {/* Close confirm dialog */}
+      <Dialog open={closeTarget != null} onOpenChange={(o) => !o && setCloseTarget(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-red-500/10 text-red-400">
+                <X className="w-4 h-4" />
+              </span>
+              <div>
+                <DialogTitle>Close position</DialogTitle>
+                <DialogDescription>Close at the current market price.</DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          {closeTarget && (
+            <div className="rounded-lg border border-border bg-muted/30 divide-y divide-border text-sm">
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="text-xs text-muted-foreground">Symbol</span>
+                <span className="font-mono">{closeTarget.symbol} · {closeTarget.direction}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="text-xs text-muted-foreground">Entry</span>
+                <span className="font-mono tabular">{closeTarget.entryPrice.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between px-3.5 py-2.5">
+                <span className="text-xs text-muted-foreground">Lots</span>
+                <span className="font-mono">{closeTarget.lotSize}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCloseTarget(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={confirmManualClose}>
+              <X className="w-4 h-4" /> Close position
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

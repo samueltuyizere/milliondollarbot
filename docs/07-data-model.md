@@ -5,6 +5,9 @@
 ## 7.1 Entity overview
 
 ```
+Role ──< Permission  (M:N via _PermissionToRole)
+User >── Role
+
 User ───< AuditLog
 
 Account 1──1 BotConfig 1──1 StrategyConfig
@@ -17,7 +20,8 @@ NewsEvent      (trading blackouts)
 BankHoliday    (trading blackouts)
 ```
 
-- `Account` is the hub: it owns one `BotConfig`, which owns one `StrategyConfig` and one `RiskRules`, and it has many `Trade`s.
+- `Role` and `Permission` form the RBAC layer. `User.roleId` FK ties each user to exactly one role.
+- `Account` is the trading hub: it owns one `BotConfig`, which owns one `StrategyConfig` and one `RiskRules`, and has many `Trade`s.
 - `BotStatus` is a logical singleton — code always reads `findFirst({ orderBy: { updatedAt: "desc" } })`.
 - Phase 1 runs a single active account (`accounts.is_active = TRUE`).
 
@@ -27,16 +31,42 @@ BankHoliday    (trading blackouts)
 
 | Enum | Values |
 |------|--------|
-| `Role` | `ADMIN`, `TRADER` |
 | `BotState` | `RUNNING`, `PAUSED`, `STOPPED`, `ERROR`, `DAILY_LOCK` |
 | `Direction` | `BUY`, `SELL` |
 | `TradeStatus` | `PENDING`, `OPEN`, `CLOSED_WIN`, `CLOSED_LOSS`, `CLOSED_BE`, `CANCELLED` |
 | `LogLevel` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
 | `NewsImpact` | `LOW`, `MEDIUM`, `HIGH` |
 
+> The old `Role` enum (`ADMIN`/`TRADER`) was replaced by the `Role` model in migration `20260609174000_add_rbac`.
+
 ---
 
 ## 7.3 Models
+
+### Role → `roles`
+| Field | Type | Default | Notes |
+|-------|------|---------|-------|
+| `id` | String | `cuid()` | PK |
+| `name` | String | — | unique (e.g. `"ADMIN"`, `"TRADER"`) |
+| `description` | String? | — | |
+| `isSystem` | Boolean | `false` | System roles (`ADMIN`) cannot be deleted |
+| `createdAt` / `updatedAt` | DateTime | `now()` / auto | |
+| `permissions` | Permission[] | — | M:N via `_PermissionToRole` |
+| `users` | User[] | — | relation |
+
+Seeded system roles: `ADMIN` (id `role_admin_sys`), `TRADER` (id `role_trader_sys`).
+
+### Permission → `permissions`
+| Field | Type | Notes |
+|-------|------|-------|
+| `id` | String | `cuid()`, PK |
+| `code` | String | unique — e.g. `"bot.control"`, `"users.manage"` |
+| `description` | String? | Human-readable label |
+| `category` | String? | Groups codes in the UI: `dashboard`, `trades`, `bot`, `config`, `risk`, `users`, `roles` |
+| `createdAt` | DateTime | `now()` |
+| `roles` | Role[] | M:N back-relation |
+
+15 codes seeded by migration `20260609174000_add_rbac`.
 
 ### User → `users`
 | Field | Type | Default | Notes |
@@ -44,8 +74,11 @@ BankHoliday    (trading blackouts)
 | `id` | String | `cuid()` | PK |
 | `email` | String | — | unique |
 | `name` | String? | — | |
-| `passwordHash` | String | — | bcrypt hash |
-| `role` | Role | `TRADER` | seeded user is `ADMIN` |
+| `passwordHash` | String | — | bcrypt cost 12 |
+| `roleId` | String | — | FK → `roles.id` |
+| `role` | Role | — | relation |
+| `isActive` | Boolean | `true` | inactive users cannot log in |
+| `passwordChangeRequired` | Boolean | `false` | set `true` when admin creates a user without explicit password |
 | `createdAt` / `updatedAt` | DateTime | `now()` / auto | |
 | `auditLogs` | AuditLog[] | — | relation |
 
@@ -63,31 +96,22 @@ BankHoliday    (trading blackouts)
 | `isActive` | Boolean | `true` |
 | `phase` | String | `"Phase 1"` |
 | `createdAt`/`updatedAt` | DateTime | `now()`/auto |
-| `botConfig` | BotConfig? | relation |
-| `trades` | Trade[] | relation |
 
 > The bot's `load_bot_config()` selects the single account where `is_active = TRUE`.
 
 ### BotConfig → `bot_configs`
 | Field | Type | Default |
 |-------|------|---------|
-| `id` | String | `cuid()` |
-| `accountId` | String | — (unique) |
 | `symbol` | String | `"XAUUSD"` |
 | `isRunning` | Boolean | `false` ⚠️ (loaded but unused; can drift) |
-| `isPaused` | Boolean | `false` ⚠️ (same) |
+| `isPaused` | Boolean | `false` ⚠️ |
 | `longOnly` | Boolean | `true` |
 | `sessionStart` | String | `"08:00"` |
 | `sessionEnd` | String | `"17:00"` |
-| `updatedAt` | DateTime | auto |
-| `account` | Account | relation |
-| `strategyConfig` | StrategyConfig? | relation |
-| `riskRules` | RiskRules? | relation |
 
 ### BotStatus → `bot_status` (singleton)
 | Field | Type | Default |
 |-------|------|---------|
-| `id` | String | `cuid()` |
 | `status` | BotState | `STOPPED` |
 | `lastPing` | DateTime? | — |
 | `equity` | Float? | — |
@@ -97,16 +121,13 @@ BankHoliday    (trading blackouts)
 | `drawdownPct` | Float? | `0` |
 | `openTrades` | Int | `0` |
 | `errorMsg` | String? | — |
-| `botMode` | String? | — (`"mock"` \| `"live"`) |
-| `updatedAt` | DateTime | auto / `now()` |
+| `botMode` | String? | `"mock"` \| `"live"` |
 
-This row is the contract surface between bot and dashboard: the bot writes it via heartbeats; the dashboard reads it for the status pill, KPIs, and the `start/stop/...` command (`status`).
+This row is the contract surface between bot and dashboard: the bot writes it via heartbeats; the dashboard reads it for the status pill, KPIs, and the `start/stop/...` command.
 
 ### StrategyConfig → `strategy_configs`
 | Field | Type | Default |
 |-------|------|---------|
-| `id` | String | `cuid()` |
-| `botConfigId` | String | — (unique) |
 | `emaFast` | Int | `21` |
 | `emaSlow` | Int | `50` |
 | `rsiPeriod` | Int | `14` |
@@ -114,20 +135,16 @@ This row is the contract surface between bot and dashboard: the bot writes it vi
 | `atrPeriod` | Int | `14` |
 | `atrMultiSl` | Float | `1.5` |
 | `timeframe` | String | `"H1"` |
-| `updatedAt` | DateTime | auto |
 
 ### RiskRules → `risk_rules`
 | Field | Type | Default |
 |-------|------|---------|
-| `id` | String | `cuid()` |
-| `botConfigId` | String | — (unique) |
 | `riskPerTradePct` | Float | `0.25` |
 | `maxDailyLossPct` | Float | `1.0` |
 | `maxDrawdownPct` | Float | `4.5` |
 | `minRR` | Float | `2.0` |
 | `maxOpenTrades` | Int | `1` |
 | `dailyLockActive` | Boolean | `false` |
-| `updatedAt` | DateTime | auto |
 
 ### Trade → `trades`
 | Field | Type | Default |
@@ -151,75 +168,23 @@ This row is the contract surface between bot and dashboard: the bot writes it vi
 | `swap` | Float? | — |
 | `notes` | String? | — |
 | `manualClose` | Boolean | `false` |
-| `createdAt` | DateTime | `now()` |
-| `account` | Account | relation |
-| `logs` | TradeLog[] | relation |
 
 `status` is derived on close from P&L: `CLOSED_WIN` / `CLOSED_LOSS` / `CLOSED_BE`. `manualClose=true` is the flag the bot polls to close a position on request.
 
 ### TradeLog → `trade_logs`
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | String | `cuid()` |
-| `tradeId` | String | — |
-| `event` | String | — (e.g. `"OPENED"`) |
-| `message` | String | — |
-| `createdAt` | DateTime | `now()` |
-| `trade` | Trade | relation |
+Events attached to a trade (e.g. `"OPENED"`, `"MANUAL_CLOSE_REQUESTED"`).
 
 ### SystemLog → `system_logs`
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | String | `cuid()` |
-| `level` | LogLevel | — |
-| `source` | String | — (e.g. `"mock"`, `"risk"`, `"strategy"`, `"market"`) |
-| `message` | String | — |
-| `metadata` | Json? | — |
-| `createdAt` | DateTime | `now()` |
-
-Written by the bot's `log()` via `POST /api/logs/system`.
+Written by the bot's `log()` via `POST /api/logs/system`. Level, source, message, optional JSON metadata.
 
 ### NewsEvent → `news_events`
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | String | `cuid()` |
-| `title` | String | — |
-| `currency` | String | `"USD"` |
-| `impact` | NewsImpact | `HIGH` |
-| `eventTime` | DateTime | — |
-| `skipTrading` | Boolean | `true` |
-| `minutesBefore` | Int | `30` |
-| `minutesAfter` | Int | `30` |
-| `createdAt` | DateTime | `now()` |
-
-The risk guard blocks trades within `[eventTime − minutesBefore, eventTime + minutesAfter]` for events with `skipTrading = true`.
+Trading blackout windows. The risk guard blocks trades within `[eventTime − minutesBefore, eventTime + minutesAfter]` for events with `skipTrading = true`.
 
 ### BankHoliday → `bank_holidays`
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | String | `cuid()` |
-| `country` | String | — |
-| `name` | String | — |
-| `date` | DateTime | — |
-| `description` | String? | — |
-| `createdAt` | DateTime | `now()` |
-
 Any holiday dated today blocks trading.
 
 ### AuditLog → `audit_logs`
-| Field | Type | Default |
-|-------|------|---------|
-| `id` | String | `cuid()` |
-| `userId` | String? | — ⚠️ often null (see below) |
-| `action` | String | — (e.g. `config.risk.update`, `bot.control`) |
-| `resource` | String? | — |
-| `oldValue` | Json? | — |
-| `newValue` | Json? | — |
-| `ipAddress` | String? | — |
-| `createdAt` | DateTime | `now()` |
-| `user` | User? | relation |
-
-> ⚠️ `logAudit()` is currently called without the session user in API routes, so `userId` is typically null. Tracked in [Known Issues](./10-known-issues-and-roadmap.md).
+Config and control changes written by dashboard API routes. `userId` is currently often null (tracked in Known Issues D‑4).
 
 ---
 
@@ -227,9 +192,10 @@ Any holiday dated today blocks trading.
 
 | Table | Written by | Read by |
 |-------|-----------|---------|
-| `users` | seed / admin | Auth |
+| `roles`, `permissions`, `_PermissionToRole` | seed / admin (via `/api/roles`) | Auth (login), dashboard |
+| `users` | seed / admin (via `/api/users`) | Auth, dashboard |
 | `accounts` | seed / dashboard | bot (`load_bot_config`), dashboard |
-| `bot_configs`, `strategy_configs`, `risk_rules` | dashboard (config APIs) | bot (`load_bot_config`), dashboard |
+| `bot_configs`, `strategy_configs`, `risk_rules` | dashboard (config APIs) | bot, dashboard |
 | `bot_status` | **bot** (heartbeat) + dashboard (control) | both |
 | `trades` | **bot** (open/close) + dashboard (manual‑close flag) | both |
 | `trade_logs` | dashboard (on trade open) | dashboard |
@@ -239,13 +205,22 @@ Any holiday dated today blocks trading.
 
 ---
 
-## 7.5 Migrations & seeding
+## 7.5 Migrations
 
-- Schema changes: `npx prisma migrate dev --name <change>` (generates SQL + applies it).
-- Client regen: `npx prisma generate`.
-- Seed data: `npx prisma db seed` (runs `prisma/seed.ts`) — creates the admin user, the Phase‑1 account, and default config/strategy/risk rows plus a STOPPED `bot_status`.
+| Migration | Change |
+|-----------|--------|
+| `20260608212246_init` | Initial schema |
+| `20260609084137_add_bot_mode` | `bot_status.bot_mode` column |
+| `20260609133904_add_manual_close` | `trades.manual_close` column |
+| `20260609174000_add_rbac` | Drop `Role` enum; add `roles`, `permissions`, `_PermissionToRole` tables; add `role_id`, `is_active`, `password_change_required` to `users`; seed 2 system roles + 15 permissions |
 
-See [09 — Setup & Deployment](./09-setup-and-deployment.md) for the full bootstrap sequence.
+**Applying migrations:**
+```bash
+cd dashboard
+npx prisma migrate deploy   # apply pending migrations
+npx prisma generate         # regenerate Prisma client
+npx prisma db seed          # (re)seed default data
+```
 
 ---
 

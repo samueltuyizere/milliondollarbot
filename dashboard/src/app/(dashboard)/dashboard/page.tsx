@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X } from "lucide-react";
+import { TradeDetailModal } from "@/components/ui/trade-detail-modal";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { TradeStatusBadge } from "@/components/ui/status-badge";
@@ -60,6 +61,7 @@ export default function DashboardPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
   const [closeTarget, setCloseTarget] = useState<TradeRow | null>(null);
+  const [detailTrade, setDetailTrade] = useState<TradeRow | null>(null);
   const [refPrice, setRefPrice] = useState<number | null>(null);
 
   async function confirmManualClose() {
@@ -154,7 +156,7 @@ export default function DashboardPage() {
       )}
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
           label="Equity"
           value={loading ? "—" : `$${(stats?.equity ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
@@ -187,6 +189,8 @@ export default function DashboardPage() {
           icon={<Activity className="w-4 h-4" />}
           tone={stats?.openTrades ? "gold" : "neutral"}
         />
+        {/* 5th card — drawdown visual with color-coded bar */}
+        <DrawdownCard pct={stats?.drawdownPct ?? 0} loading={loading} />
       </div>
 
       {/* Charts */}
@@ -203,28 +207,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Drawdown progress bar */}
-      {stats && (
-        <div className="space-y-1.5">
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>Drawdown</span>
-            <span className="tabular">{stats.drawdownPct.toFixed(2)}% / 4.5%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-700"
-              style={{
-                width: `${Math.min((stats.drawdownPct / 4.5) * 100, 100)}%`,
-                background: stats.drawdownPct > 3
-                  ? "var(--loss)"
-                  : stats.drawdownPct > 1.5
-                  ? "oklch(0.78 0.16 75)"
-                  : "var(--profit)",
-              }}
-            />
-          </div>
-        </div>
-      )}
 
       {/* Recent trades table */}
       <div>
@@ -273,12 +255,16 @@ export default function DashboardPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {trades.map((t) => (
-                    <tr key={t.id} className={cn(
-                      "transition-colors",
-                      t.direction === "BUY"
-                        ? "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.09]"
-                        : "bg-red-500/[0.04]     hover:bg-red-500/[0.09]"
-                    )}>
+                    <tr
+                      key={t.id}
+                      onClick={() => setDetailTrade(t)}
+                      className={cn(
+                        "transition-colors cursor-pointer",
+                        t.direction === "BUY"
+                          ? "bg-emerald-500/[0.04] hover:bg-emerald-500/[0.09]"
+                          : "bg-red-500/[0.04]     hover:bg-red-500/[0.09]"
+                      )}
+                    >
                       <td className="px-4 py-2.5 text-xs tabular whitespace-nowrap">
                         <div>{formatTradeDate(t.openTime)}</div>
                         <div className="text-muted-foreground sm:hidden">{formatTradeTime(t.openTime)}</div>
@@ -332,7 +318,7 @@ export default function DashboardPage() {
                       <td className="px-4 py-2.5 text-right">
                         <TradeStatusBadge status={t.status} />
                       </td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
                         {t.status === "OPEN" && (
                           t.manualClose ? (
                             <span className="text-[10px] text-muted-foreground italic">Closing…</span>
@@ -358,6 +344,14 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      <TradeDetailModal
+        trade={detailTrade}
+        refPrice={refPrice}
+        closingId={closingId}
+        onClose={() => setDetailTrade(null)}
+        onRequestClose={(t) => setCloseTarget(t)}
+      />
 
       <Dialog open={closeTarget != null} onOpenChange={(o) => !o && setCloseTarget(null)}>
         <DialogContent className="sm:max-w-md">
@@ -419,6 +413,71 @@ export default function DashboardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+const MAX_DD = 4.5;
+
+function DrawdownCard({ pct, loading, className }: { pct: number; loading: boolean; className?: string }) {
+  const ratio = Math.min(pct / MAX_DD, 1);
+  const danger  = pct > 3;
+  const warning = pct > 1.5 && !danger;
+
+  const barColor = danger
+    ? "var(--loss)"
+    : warning
+    ? "oklch(0.78 0.16 75)"
+    : "var(--profit)";
+
+  const borderColor = danger
+    ? "border-red-500/30"
+    : warning
+    ? "border-amber-400/30"
+    : "border-border";
+
+  const bgTint = danger
+    ? "bg-red-500/[0.04]"
+    : warning
+    ? "bg-amber-400/[0.04]"
+    : "bg-card";
+
+  const valueColor = danger
+    ? "text-[--loss]"
+    : warning
+    ? "text-amber-400"
+    : "text-[--profit]";
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-4 flex flex-col gap-2 min-w-0 transition-colors duration-500",
+      bgTint, borderColor, className
+    )}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+          Drawdown
+        </span>
+        <BarChart2 className="w-4 h-4 text-muted-foreground/60 shrink-0" />
+      </div>
+      <div className="space-y-2">
+        <div className="flex items-end justify-between gap-2">
+          <p className={cn("text-2xl font-semibold price", loading ? "text-foreground" : valueColor)}>
+            {loading ? "—" : `${pct.toFixed(2)}%`}
+          </p>
+          <span className="text-xs text-muted-foreground tabular mb-0.5">
+            max {MAX_DD}%
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-700"
+            style={{ width: `${ratio * 100}%`, background: barColor }}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {danger ? "⚠ Critical — near limit" : warning ? "Caution — monitor closely" : "Healthy"}
+        </p>
+      </div>
     </div>
   );
 }
