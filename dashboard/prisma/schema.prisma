@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth ────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String    @map("password_hash")
+  role          Role      @default(TRADER)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  TRADER
+}
+
+// ─── Accounts ────────────────────────────────────────────────────────────────
+
+model Account {
+  id              String   @id @default(cuid())
+  name            String
+  broker          String   @default("FundedNext")
+  accountNumber   String?  @map("account_number")
+  balance         Float    @default(500000)
+  currency        String   @default("USD")
+  drawdownLimit   Float    @default(5.0)   @map("drawdown_limit")
+  dailyLossLimit  Float    @default(1.0)   @map("daily_loss_limit")
+  isActive        Boolean  @default(true)  @map("is_active")
+  phase           String   @default("Phase 1")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt      @map("updated_at")
+
+  botConfig       BotConfig?
+  trades          Trade[]
+
+  @@map("accounts")
+}
+
+// ─── Bot Config ───────────────────────────────────────────────────────────────
+
+model BotConfig {
+  id           String    @id @default(cuid())
+  accountId    String    @unique @map("account_id")
+  account      Account   @relation(fields: [accountId], references: [id])
+  symbol       String    @default("XAUUSD")
+  isRunning    Boolean   @default(false)  @map("is_running")
+  isPaused     Boolean   @default(false)  @map("is_paused")
+  longOnly     Boolean   @default(true)   @map("long_only")
+  sessionStart String    @default("08:00") @map("session_start")
+  sessionEnd   String    @default("17:00") @map("session_end")
+  updatedAt    DateTime  @updatedAt        @map("updated_at")
+
+  strategyConfig  StrategyConfig?
+  riskRules       RiskRules?
+
+  @@map("bot_configs")
+}
+
+// ─── Bot Status ───────────────────────────────────────────────────────────────
+
+model BotStatus {
+  id          String    @id @default(cuid())
+  status      BotState  @default(STOPPED)
+  lastPing    DateTime? @map("last_ping")
+  equity      Float?
+  balance     Float?
+  dailyPnl    Float?    @default(0) @map("daily_pnl")
+  peakEquity  Float?    @map("peak_equity")
+  drawdownPct Float?    @default(0) @map("drawdown_pct")
+  openTrades  Int       @default(0) @map("open_trades")
+  errorMsg    String?   @map("error_msg")
+  updatedAt   DateTime  @updatedAt @default(now()) @map("updated_at")
+
+  @@map("bot_status")
+}
+
+enum BotState {
+  RUNNING
+  PAUSED
+  STOPPED
+  ERROR
+  DAILY_LOCK
+}
+
+// ─── Strategy Config ──────────────────────────────────────────────────────────
+
+model StrategyConfig {
+  id          String     @id @default(cuid())
+  botConfigId String     @unique @map("bot_config_id")
+  botConfig   BotConfig  @relation(fields: [botConfigId], references: [id])
+  emaFast     Int        @default(21)  @map("ema_fast")
+  emaSlow     Int        @default(50)  @map("ema_slow")
+  rsiPeriod   Int        @default(14)  @map("rsi_period")
+  rsiOversold Float      @default(40.0) @map("rsi_oversold")
+  atrPeriod   Int        @default(14)  @map("atr_period")
+  atrMultiSl  Float      @default(1.5) @map("atr_multi_sl")
+  timeframe   String     @default("H1")
+  updatedAt   DateTime   @updatedAt    @map("updated_at")
+
+  @@map("strategy_configs")
+}
+
+// ─── Risk Rules ───────────────────────────────────────────────────────────────
+
+model RiskRules {
+  id                String    @id @default(cuid())
+  botConfigId       String    @unique @map("bot_config_id")
+  botConfig         BotConfig @relation(fields: [botConfigId], references: [id])
+  riskPerTradePct   Float     @default(0.25) @map("risk_per_trade_pct")
+  maxDailyLossPct   Float     @default(1.0)  @map("max_daily_loss_pct")
+  maxDrawdownPct    Float     @default(4.5)  @map("max_drawdown_pct")
+  minRR             Float     @default(2.0)  @map("min_rr")
+  maxOpenTrades     Int       @default(1)    @map("max_open_trades")
+  dailyLockActive   Boolean   @default(false) @map("daily_lock_active")
+  updatedAt         DateTime  @updatedAt      @map("updated_at")
+
+  @@map("risk_rules")
+}
+
+// ─── Trades ───────────────────────────────────────────────────────────────────
+
+model Trade {
+  id          String      @id @default(cuid())
+  accountId   String      @map("account_id")
+  account     Account     @relation(fields: [accountId], references: [id])
+  symbol      String      @default("XAUUSD")
+  direction   Direction
+  entryPrice  Float       @map("entry_price")
+  stopLoss    Float       @map("stop_loss")
+  takeProfit  Float       @map("take_profit")
+  lotSize     Float       @map("lot_size")
+  mt5Ticket   Int?        @unique @map("mt5_ticket")
+  status      TradeStatus @default(OPEN)
+  openTime    DateTime    @default(now()) @map("open_time")
+  closeTime   DateTime?   @map("close_time")
+  closePrice  Float?      @map("close_price")
+  pnl         Float?
+  pnlPct      Float?      @map("pnl_pct")
+  commission  Float?
+  swap        Float?
+  notes       String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  logs        TradeLog[]
+
+  @@map("trades")
+}
+
+enum Direction {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  PENDING
+  OPEN
+  CLOSED_WIN
+  CLOSED_LOSS
+  CLOSED_BE
+  CANCELLED
+}
+
+// ─── Trade Logs ───────────────────────────────────────────────────────────────
+
+model TradeLog {
+  id        String   @id @default(cuid())
+  tradeId   String   @map("trade_id")
+  trade     Trade    @relation(fields: [tradeId], references: [id])
+  event     String
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("trade_logs")
+}
+
+// ─── System Logs ──────────────────────────────────────────────────────────────
+
+model SystemLog {
+  id        String   @id @default(cuid())
+  level     LogLevel
+  source    String
+  message   String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("system_logs")
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+// ─── News Events ──────────────────────────────────────────────────────────────
+
+model NewsEvent {
+  id            String     @id @default(cuid())
+  title         String
+  currency      String     @default("USD")
+  impact        NewsImpact @default(HIGH)
+  eventTime     DateTime   @map("event_time")
+  skipTrading   Boolean    @default(true)  @map("skip_trading")
+  minutesBefore Int        @default(30)    @map("minutes_before")
+  minutesAfter  Int        @default(30)    @map("minutes_after")
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  @@map("news_events")
+}
+
+enum NewsImpact {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ─── Bank Holidays ────────────────────────────────────────────────────────────
+
+model BankHoliday {
+  id          String   @id @default(cuid())
+  country     String
+  name        String
+  date        DateTime
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("bank_holidays")
+}
+
+// ─── Audit Logs ───────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  resource  String?
+  oldValue  Json?    @map("old_value")
+  newValue  Json?    @map("new_value")
+  ipAddress String?  @map("ip_address")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}

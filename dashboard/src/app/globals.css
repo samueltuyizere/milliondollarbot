@@ -1,0 +1,189 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+
+  /* Semantic trading colors */
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+  --color-gold: var(--gold);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+}
+
+:root {
+  --background: oklch(0.13 0.005 260);
+  --foreground: oklch(0.96 0.004 260);
+  --card: oklch(0.17 0.006 260);
+  --card-foreground: oklch(0.96 0.004 260);
+  --popover: oklch(0.17 0.006 260);
+  --popover-foreground: oklch(0.96 0.004 260);
+  --primary: oklch(0.78 0.16 75);        /* gold */
+  --primary-foreground: oklch(0.13 0.005 260);
+  --secondary: oklch(0.22 0.006 260);
+  --secondary-foreground: oklch(0.96 0.004 260);
+  --muted: oklch(0.22 0.006 260);
+  --muted-foreground: oklch(0.60 0.010 260);
+  --accent: oklch(0.22 0.006 260);
+  --accent-foreground: oklch(0.96 0.004 260);
+  --destructive: oklch(0.65 0.21 25);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.78 0.16 75 / 40%);
+  --radius: 0.5rem;
+
+  /* Sidebar */
+  --sidebar: oklch(0.15 0.006 260);
+  --sidebar-foreground: oklch(0.96 0.004 260);
+  --sidebar-primary: oklch(0.78 0.16 75);
+  --sidebar-primary-foreground: oklch(0.13 0.005 260);
+  --sidebar-accent: oklch(0.20 0.006 260);
+  --sidebar-accent-foreground: oklch(0.96 0.004 260);
+  --sidebar-border: oklch(1 0 0 / 6%);
+  --sidebar-ring: oklch(0.78 0.16 75 / 40%);
+
+  /* Trading semantic */
+  --profit: oklch(0.72 0.17 145);       /* green */
+  --loss: oklch(0.65 0.21 25);          /* red */
+  --gold: oklch(0.78 0.16 75);          /* amber/gold */
+  --surface: oklch(0.17 0.006 260);
+  --surface-raised: oklch(0.20 0.006 260);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans), system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: -0.01em;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.28 0 0) transparent;
+  }
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: oklch(0.28 0 0); border-radius: 99px; }
+
+  /* Headings — tighter tracking, heavier */
+  h1, h2, h3 {
+    font-family: var(--font-sans), system-ui, sans-serif;
+    letter-spacing: -0.025em;
+    line-height: 1.25;
+    font-weight: 600;
+  }
+
+  /* Monospace — JetBrains Mono everywhere we need numbers */
+  code, kbd, pre, .font-mono {
+    font-family: var(--font-mono), "JetBrains Mono", "Fira Code", monospace;
+    font-feature-settings: "liga" 1, "calt" 1;
+    letter-spacing: -0.02em;
+  }
+
+  /* Numbers always tabular */
+  .tabular, [data-tabular] {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Price display — larger mono numbers */
+  .price {
+    font-family: var(--font-mono), monospace;
+    font-weight: 500;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Utility: mono numbers */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Animated dot */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.dot-blink { animation: blink 2s ease-in-out infinite; }
+
+/* Subtle scan-line overlay on log panels */
+.log-panel {
+  background: oklch(0.12 0.004 260);
+}
+
+/* ─── Auth hero animations ───────────────────────────────── */
+@keyframes auth-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  20%       { transform: translate(10px, -14px) scale(1.12); }
+  40%       { transform: translate(-8px, -8px) scale(0.88); }
+  60%       { transform: translate(14px, 6px) scale(1.08); }
+  80%       { transform: translate(-12px, 10px) scale(0.94); }
+}
+
+@keyframes auth-pulse-node {
+  0%, 100% { transform: scale(1);   opacity: 0.45; }
+  50%       { transform: scale(1.6); opacity: 1; }
+}
+
+@keyframes auth-bars-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-5px); }
+}
+
+@keyframes auth-clock-blink {
+  0%, 100% { opacity: 0.75; }
+  50%       { opacity: 0.2; }
+}
+
+@keyframes auth-glow-breathe {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [style*="auth-drift"],
+  [style*="auth-pulse-node"],
+  [style*="auth-bars-float"] {
+    animation: none !important;
+  }
+}
