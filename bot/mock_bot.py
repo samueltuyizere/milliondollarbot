@@ -171,6 +171,37 @@ def _open_paper_trade(cfg: dict, signal: dict, lot_size: float) -> None:
         )
 
 
+def _cleanup_orphaned_trades(symbol: str, price: float) -> None:
+    """
+    On startup, any trade that is OPEN in the DB but not in our in-memory
+    open_trades dict is an orphan from a previous hard-killed session.
+    Close them at the current market price so the bot can trade freely.
+    """
+    try:
+        from utils.db_writer import _session, DASHBOARD_URL
+        r = _session.get(f"{DASHBOARD_URL}/api/trades?status=OPEN&limit=100", timeout=5)
+        orphans = r.json().get("trades", [])
+    except Exception as e:
+        log("WARNING", "mock", f"Orphan check failed: {e}")
+        return
+
+    if not orphans:
+        return
+
+    for t in orphans:
+        trade_id = t["id"]
+        entry    = t.get("entryPrice", price)
+        lot_size = t.get("lotSize", 0.0)
+        direction = t.get("direction", "BUY")
+        pnl = calc_pnl(direction, entry, price, lot_size, symbol)
+        report_trade_closed(trade_id, price, pnl)
+        log(
+            "WARNING",
+            "mock",
+            f"Orphan closed: {direction} @ {entry:.2f} → {price:.2f} | P&L ${pnl:+.2f} (hard-kill recovery)",
+        )
+
+
 def main():
     global peak_equity, today_pnl, last_heartbeat, running
 
@@ -198,6 +229,9 @@ def main():
         sys.exit(1)
 
     log("INFO", "mock", f"Live {symbol} ≈ ${probe:,.2f} | Balance ${balance:,.2f} | Today P&L ${today_pnl:+.2f} | {cfg['timeframe']}")
+
+    # Close any positions left open by a previous hard-killed session
+    _cleanup_orphaned_trades(symbol, probe)
 
     while running:
         try:
