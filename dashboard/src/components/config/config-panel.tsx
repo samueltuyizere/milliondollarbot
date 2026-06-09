@@ -62,7 +62,7 @@ function RiskTab() {
       <div className="px-4">
         <FieldRow
           label="Risk per trade"
-          hint={`0.25% = $${((500000 * cfg.riskPerTradePct) / 100).toLocaleString()} on $500k`}
+          hint={`0.25% = $${((200000 * cfg.riskPerTradePct) / 100).toLocaleString()} on $200k`}
         >
           <div className="flex items-center gap-2">
             <Input

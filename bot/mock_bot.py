@@ -214,7 +214,7 @@ def main():
         sys.exit(1)
 
     symbol = cfg["symbol"]
-    base_balance = cfg.get("balance", 500_000.0)
+    base_balance = cfg.get("balance", 200_000.0)
 
     # Restore today_pnl, all-time P&L and peak equity from closed trade history
     state = restore_session_state(base_balance)

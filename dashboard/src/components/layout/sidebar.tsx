@@ -241,7 +241,7 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
               <p className="text-[10px] text-primary font-semibold uppercase tracking-[0.14em] mt-1.5">
                 {roleLabel}
               </p>
-              <p className="text-[10px] text-sidebar-foreground/45 mt-0.5">Phase 1 · $500k</p>
+              <p className="text-[10px] text-sidebar-foreground/45 mt-0.5">Phase 1 · $200k</p>
             </div>
           )}
         </div>
