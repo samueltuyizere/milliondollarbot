@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X } from "lucide-react";
+import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X, Target, Percent } from "lucide-react";
 // X kept for the close confirm dialog
 import { TradeDetailModal } from "@/components/ui/trade-detail-modal";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -131,6 +131,16 @@ export default function DashboardPage() {
   const balance = stats?.balance ?? 500000;
   const pnlPct = stats ? (stats.dailyPnl / balance) * 100 : 0;
   const pnlTone = !stats ? "neutral" : stats.dailyPnl > 0 ? "profit" : stats.dailyPnl < 0 ? "loss" : "neutral";
+
+  const { winRate, totalPnl } = useMemo(() => {
+    const closed = chartTrades.filter((t) => t.status !== "OPEN");
+    const wins = closed.filter((t) => t.status === "CLOSED_WIN").length;
+    const wr = closed.length > 0 ? (wins / closed.length) * 100 : 0;
+    const tp = closed.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
+    return { winRate: wr, totalPnl: tp };
+  }, [chartTrades]);
+  const totalPnlTone = totalPnl > 0 ? "profit" : totalPnl < 0 ? "loss" : "neutral";
+
   const equitySeries = useMemo(
     () => buildEquitySeries(chartTrades, balance, stats?.equity),
     [chartTrades, balance, stats?.equity]
@@ -155,7 +165,7 @@ export default function DashboardPage() {
       )}
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard
           label="Equity"
           value={loading ? "—" : `$${(stats?.equity ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
@@ -188,7 +198,20 @@ export default function DashboardPage() {
           icon={<Activity className="w-4 h-4" />}
           tone="neutral"
         />
-
+        <StatCard
+          label="Win Rate"
+          value={loading ? "—" : `${winRate.toFixed(1)}%`}
+          sub={`${chartTrades.filter((t) => t.status === "CLOSED_WIN").length} wins of ${chartTrades.filter((t) => t.status !== "OPEN").length} closed`}
+          icon={<Percent className="w-4 h-4" />}
+          tone="neutral"
+        />
+        <StatCard
+          label="Total P&L"
+          value={loading ? "—" : `${totalPnl >= 0 ? "+" : ""}$${Math.abs(totalPnl).toFixed(0)}`}
+          sub={`${((totalPnl / balance) * 100).toFixed(3)}% of balance`}
+          icon={totalPnl >= 0 ? <Target className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+          tone={totalPnlTone}
+        />
       </div>
 
       {/* Charts */}
