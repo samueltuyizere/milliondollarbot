@@ -177,7 +177,7 @@ export function Header({ onMenuToggle }: HeaderProps) {
             </button>
 
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-2 w-52 min-w-[200px] max-w-[calc(100vw-2rem)] bg-popover border border-border rounded-xl shadow-lg z-50 py-1 overflow-hidden">
+              <div className="absolute right-0 top-full mt-2 w-52 min-w-[200px] max-w-[calc(100vw-2rem)] bg-card border border-border rounded-xl shadow-2xl z-50 py-1 overflow-hidden">
                 <div className="px-4 py-3 border-b border-border">
                   <p className="text-sm font-semibold truncate m-0" suppressHydrationWarning>
                     {name}

@@ -5,8 +5,6 @@ import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   LayoutDashboard,
-  Bot,
-  Settings2,
   Calendar,
   ScrollText,
   TrendingUp,
@@ -18,7 +16,6 @@ import {
   Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useModals, type AppModal } from "@/context/modal-context";
 import { usePermissions } from "@/hooks/use-permissions";
 import { PERMISSIONS } from "@/lib/permissions";
 
@@ -34,10 +31,6 @@ const SETTINGS_NAV = [
   { href: "/settings/roles",  icon: Shield, label: "Roles",       permission: PERMISSIONS.ROLES_VIEW },
 ] as const;
 
-const MODAL_NAV: { id: AppModal; icon: React.ElementType; label: string }[] = [
-  { id: "bot", icon: Bot, label: "Bot Control" },
-  { id: "config", icon: Settings2, label: "Configuration" },
-];
 
 interface SidebarProps {
   isOpen: boolean;
@@ -84,42 +77,10 @@ function NavLinkItem({
   );
 }
 
-function NavModalItem({
-  icon: Icon,
-  label,
-  collapsed,
-  onClick,
-}: {
-  icon: React.ElementType;
-  label: string;
-  collapsed: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <li className="my-0.5">
-      <button
-        type="button"
-        onClick={onClick}
-        title={collapsed ? label : undefined}
-        className={cn(
-          "flex items-center gap-3 min-h-[44px] w-full text-left transition-all duration-200",
-          collapsed ? "justify-center px-3 py-3" : "px-5 md:px-7 py-3",
-          "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground border-l-4 border-transparent"
-        )}
-      >
-        <Icon className="shrink-0 w-[18px] h-[18px]" />
-        {!collapsed && (
-          <span className="text-sm font-medium flex-1 truncate text-left">{label}</span>
-        )}
-      </button>
-    </li>
-  );
-}
 
 export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const { openModal } = useModals();
   const { can } = usePermissions();
 
   const name =
@@ -141,16 +102,11 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
     }
   };
 
-  const handleModalOpen = (id: AppModal) => {
-    openModal(id);
-    handleLinkClick();
-  };
-
   return (
     <>
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40 lg:hidden min-h-dvh"
+          className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40 lg:hidden min-h-dvh cursor-pointer"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -276,15 +232,6 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
                 }
                 collapsed={collapsed}
                 onClick={handleLinkClick}
-              />
-            ))}
-            {MODAL_NAV.map((item) => (
-              <NavModalItem
-                key={item.id}
-                icon={item.icon}
-                label={item.label}
-                collapsed={collapsed}
-                onClick={() => handleModalOpen(item.id)}
               />
             ))}
           </ul>
