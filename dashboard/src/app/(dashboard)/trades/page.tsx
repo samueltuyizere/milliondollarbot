@@ -210,9 +210,12 @@ export default function TradesPage() {
                       </td>
                       <td className={cn(
                         "px-4 py-2.5 text-right font-mono text-xs tabular font-medium",
-                        t.pnl == null ? "text-muted-foreground"
-                          : t.pnl > 0 ? "text-emerald-400"
-                          : t.pnl < 0 ? "text-red-400"
+                        t.status === "CLOSED_WIN"  ? "text-emerald-400"
+                          : t.status === "CLOSED_LOSS" ? "text-red-400"
+                          : t.status === "CLOSED_BE"   ? "text-muted-foreground"
+                          : t.pnl == null              ? "text-muted-foreground"
+                          : t.pnl > 0                  ? "text-emerald-400"
+                          : t.pnl < 0                  ? "text-red-400"
                           : "text-muted-foreground"
                       )}>
                         {t.pnl != null

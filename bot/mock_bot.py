@@ -12,10 +12,44 @@ Run with: python mock_bot.py
 import os
 import sys
 import time
+import fcntl
 import signal as _signal
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# ── Single-instance lock ──────────────────────────────────────────────
+# Prevents duplicate bot processes from running simultaneously.
+_LOCK_FILE = "/tmp/aitrader_mock_bot.lock"
+_lock_fd = None
+
+def _acquire_lock() -> bool:
+    global _lock_fd
+    try:
+        _lock_fd = open(_LOCK_FILE, "w")
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fd.write(str(os.getpid()))
+        _lock_fd.flush()
+        return True
+    except OSError:
+        return False
+
+def _release_lock():
+    global _lock_fd
+    if _lock_fd:
+        try:
+            fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+            _lock_fd.close()
+        except Exception:
+            pass
+    try:
+        os.unlink(_LOCK_FILE)
+    except Exception:
+        pass
+
+if not _acquire_lock():
+    print("[mock_bot] Another instance is already running. Exiting.")
+    sys.exit(1)
 
 BOT_MODE = "mock"
 
@@ -67,6 +101,7 @@ def graceful_shutdown(signum, frame):
     global running
     log("INFO", "mock", "Shutdown — stopping paper bot…")
     running = False
+    _release_lock()
 
 
 _signal.signal(_signal.SIGTERM, graceful_shutdown)
@@ -374,6 +409,7 @@ def main():
     final_equity = base_balance + state["total_pnl"] + today_pnl
     send_heartbeat(final_equity, balance, today_pnl, peak_equity, 0, "STOPPED", bot_mode=BOT_MODE)
     log("INFO", "mock", "Paper bot stopped.")
+    _release_lock()
 
 
 if __name__ == "__main__":

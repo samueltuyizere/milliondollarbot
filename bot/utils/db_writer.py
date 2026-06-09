@@ -55,7 +55,7 @@ def report_trade_closed(trade_id: str, close_price: float, pnl: float, commissio
         log("ERROR", "db", f"report_trade_closed exception: {e}")
 
 
-def restore_session_state(base_balance: float) -> dict:
+def restore_session_state(base_balance: float, retries: int = 5, retry_delay: float = 3.0) -> dict:
     """
     Query closed trade history from the dashboard and return:
       - today_pnl    : sum of PnL for trades closed today (UTC)
@@ -67,8 +67,22 @@ def restore_session_state(base_balance: float) -> dict:
     """
     from datetime import datetime, timezone
     result = {"today_pnl": 0.0, "total_pnl": 0.0, "peak_equity": base_balance}
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            r = _session.get(f"{DASHBOARD_URL}/api/trades?limit=10000", timeout=5)
+            r.raise_for_status()
+            break
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                import time as _time
+                log("WARNING", "db", f"Session restore attempt {attempt}/{retries} failed — retrying in {retry_delay}s: {e}")
+                _time.sleep(retry_delay)
+            else:
+                log("WARNING", "db", f"Could not restore session state: {e}")
+                return result
     try:
-        r = _session.get(f"{DASHBOARD_URL}/api/trades?limit=10000", timeout=5)
         trades = r.json().get("trades", [])
 
         closed_statuses = {"CLOSED_WIN", "CLOSED_LOSS", "CLOSED_BE"}

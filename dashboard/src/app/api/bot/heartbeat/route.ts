@@ -21,6 +21,10 @@ export async function POST(req: Request) {
 
     const existing = await prisma.botStatus.findFirst({ orderBy: { updatedAt: "desc" } });
 
+    // Always derive openTrades from the real DB count so the dashboard
+    // stays accurate even if the bot's in-memory count drifts.
+    const dbOpenCount = await prisma.trade.count({ where: { status: "OPEN" } });
+
     const data = {
       lastPing: new Date(),
       equity: body.equity,
@@ -28,7 +32,7 @@ export async function POST(req: Request) {
       dailyPnl: body.dailyPnl ?? 0,
       peakEquity: body.peakEquity,
       drawdownPct: body.drawdownPct ?? 0,
-      openTrades: body.openTrades ?? 0,
+      openTrades: dbOpenCount,
       errorMsg: body.errorMsg ?? null,
       ...(body.botMode && { botMode: body.botMode }),
       ...(body.status && { status: body.status as "RUNNING" | "PAUSED" | "STOPPED" | "ERROR" | "DAILY_LOCK" }),

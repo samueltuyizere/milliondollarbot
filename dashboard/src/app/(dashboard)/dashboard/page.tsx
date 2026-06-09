@@ -297,8 +297,15 @@ export default function DashboardPage() {
                         const displayPnl = isLive
                           ? floatingPnl(t, refPrice!)
                           : t.pnl;
+                        const pnlColor =
+                          t.status === "CLOSED_WIN" ? "text-emerald-400"
+                          : t.status === "CLOSED_LOSS" ? "text-red-400"
+                          : t.status === "CLOSED_BE" ? "text-muted-foreground"
+                          : (displayPnl ?? 0) > 0 ? "text-emerald-400"
+                          : (displayPnl ?? 0) < 0 ? "text-red-400"
+                          : "text-muted-foreground";
                         return (
-                          <td className={`px-4 py-2.5 text-right font-mono text-xs tabular ${(displayPnl ?? 0) >= 0 ? "text-[--profit]" : "text-[--loss]"}`}>
+                          <td className={`px-4 py-2.5 text-right font-mono text-xs tabular ${pnlColor}`}>
                             {displayPnl != null ? (
                               <span className="inline-flex items-center justify-end gap-1.5">
                                 {isLive && (

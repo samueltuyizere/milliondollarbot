@@ -68,8 +68,8 @@ export function TradeOutcomeDonut({ slices, trades, loading }: TradeOutcomeDonut
                   nameKey="name"
                   cx="50%"
                   cy="50%"
-                  innerRadius="62%"
-                  outerRadius="88%"
+                  innerRadius="66%"
+                  outerRadius="86%"
                   paddingAngle={2}
                   stroke="transparent"
                 >

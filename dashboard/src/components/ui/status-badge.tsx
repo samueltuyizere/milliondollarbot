@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils";
 type BotState = "RUNNING" | "PAUSED" | "STOPPED" | "ERROR" | "DAILY_LOCK";
 
 const botStateConfig: Record<BotState, { label: string; dot: string; badge: string }> = {
-  RUNNING:    { label: "Running",    dot: "bg-[--profit] dot-blink", badge: "text-[--profit] bg-[--profit]/10 border-[--profit]/20" },
-  PAUSED:     { label: "Paused",     dot: "bg-amber-400", badge: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
-  STOPPED:    { label: "Stopped",    dot: "bg-muted-foreground", badge: "text-muted-foreground bg-muted border-border" },
-  ERROR:      { label: "Error",      dot: "bg-[--loss] dot-blink", badge: "text-[--loss] bg-[--loss]/10 border-[--loss]/20" },
-  DAILY_LOCK: { label: "Daily Lock", dot: "bg-[--loss] dot-blink", badge: "text-[--loss] bg-[--loss]/10 border-[--loss]/20" },
+  RUNNING:    { label: "Running",    dot: "bg-emerald-400 dot-blink", badge: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
+  PAUSED:     { label: "Paused",     dot: "bg-amber-400",             badge: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
+  STOPPED:    { label: "Stopped",    dot: "bg-muted-foreground",      badge: "text-muted-foreground bg-muted border-border" },
+  ERROR:      { label: "Error",      dot: "bg-red-400 dot-blink",     badge: "text-red-400 bg-red-400/10 border-red-400/20" },
+  DAILY_LOCK: { label: "Daily Lock", dot: "bg-red-400 dot-blink",     badge: "text-red-400 bg-red-400/10 border-red-400/20" },
 };
 
 export function BotStatusBadge({ status }: { status: BotState }) {
@@ -32,8 +32,8 @@ type TradeStatus = "OPEN" | "CLOSED_WIN" | "CLOSED_LOSS" | "CLOSED_BE" | "PENDIN
 
 const tradeStateConfig: Record<TradeStatus, { label: string; style: string }> = {
   OPEN:        { label: "Open",       style: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
-  CLOSED_WIN:  { label: "Win",        style: "text-[--profit] bg-[--profit]/10 border-[--profit]/20" },
-  CLOSED_LOSS: { label: "Loss",       style: "text-[--loss] bg-[--loss]/10 border-[--loss]/20" },
+  CLOSED_WIN:  { label: "Win",        style: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" },
+  CLOSED_LOSS: { label: "Loss",       style: "text-red-400 bg-red-400/10 border-red-400/20" },
   CLOSED_BE:   { label: "Break Even", style: "text-muted-foreground bg-muted border-border" },
   PENDING:     { label: "Pending",    style: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
   CANCELLED:   { label: "Cancelled",  style: "text-muted-foreground bg-muted border-border" },
@@ -59,8 +59,8 @@ export function DirectionBadge({ direction }: { direction: "BUY" | "SELL" }) {
     <span className={cn(
       "inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-bold",
       isBuy
-        ? "text-[--profit] bg-[--profit]/10 border-[--profit]/25"
-        : "text-[--loss]   bg-[--loss]/10   border-[--loss]/25"
+        ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/25"
+        : "text-red-400 bg-red-400/10 border-red-400/25"
     )}>
       {isBuy
         ? <TrendingUp  className="w-3 h-3 shrink-0" />
@@ -78,8 +78,8 @@ const logLevelConfig: Record<LogLevel, { label: string; style: string }> = {
   DEBUG:    { label: "DBG",  style: "text-muted-foreground" },
   INFO:     { label: "INFO", style: "text-blue-400" },
   WARNING:  { label: "WARN", style: "text-amber-400" },
-  ERROR:    { label: "ERR",  style: "text-[--loss]" },
-  CRITICAL: { label: "CRIT", style: "text-[--loss] font-bold" },
+  ERROR:    { label: "ERR",  style: "text-red-400" },
+  CRITICAL: { label: "CRIT", style: "text-red-400 font-bold" },
 };
 
 export function LogLevelBadge({ level }: { level: LogLevel }) {
