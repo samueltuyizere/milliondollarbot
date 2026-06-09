@@ -43,9 +43,8 @@ last_heartbeat = 0.0
 def _init_ticket_seq() -> int:
     """Start mock ticket sequence after the highest existing paper ticket in the DB."""
     try:
-        import requests
-        api = os.environ.get("DASHBOARD_API_URL", "http://localhost:3000")
-        r = requests.get(f"{api}/api/trades?limit=1000", timeout=5)
+        from utils.db_writer import _session, DASHBOARD_URL as api
+        r = _session.get(f"{api}/api/trades?limit=1000", timeout=5)
         trades = r.json().get("trades", [])
         paper_tickets = [
             t["mt5Ticket"] for t in trades

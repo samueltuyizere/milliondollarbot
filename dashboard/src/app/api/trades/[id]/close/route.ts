@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyBotSecret } from "@/lib/bot-auth";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const denied = await verifyBotSecret(req);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await req.json();

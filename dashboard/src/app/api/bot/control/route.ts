@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAudit, logSystem } from "@/lib/audit";
+import { auth } from "@/lib/auth";
 
 type Command = "start" | "stop" | "pause" | "resume";
 
 export async function POST(req: Request) {
   try {
+    const session = await auth();
+    const userId = (session?.user as { id?: string })?.id;
     const { command } = (await req.json()) as { command: Command };
     if (!["start", "stop", "pause", "resume"].includes(command)) {
       return NextResponse.json({ error: "Invalid command" }, { status: 400 });
@@ -42,7 +45,7 @@ export async function POST(req: Request) {
       await prisma.riskRules.updateMany({ data: { dailyLockActive: false } });
     }
 
-    await logAudit({ action: `bot.${command}`, resource: "bot_status" });
+    await logAudit({ userId, action: `bot.${command}`, resource: "bot_status" });
     await logSystem({ level: "INFO", source: "api", message: `Bot command: ${command} → ${newStatus}` });
 
     return NextResponse.json({ ok: true, status: newStatus });

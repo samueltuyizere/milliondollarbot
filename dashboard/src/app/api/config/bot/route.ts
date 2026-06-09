@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/lib/audit";
+import { auth } from "@/lib/auth";
 
 export async function GET() {
   try {
@@ -13,6 +14,8 @@ export async function GET() {
 
 export async function PUT(req: Request) {
   try {
+    const session = await auth();
+    const userId = (session?.user as { id?: string })?.id;
     const body = await req.json();
     const existing = await prisma.botConfig.findFirst();
 
@@ -31,6 +34,7 @@ export async function PUT(req: Request) {
     });
 
     await logAudit({
+      userId,
       action: "config.bot.update",
       resource: "bot_configs",
       oldValue: old,

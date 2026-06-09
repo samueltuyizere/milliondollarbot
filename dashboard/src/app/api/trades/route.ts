@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyBotOrSession, verifyBotSecret } from "@/lib/bot-auth";
 
 export async function GET(req: Request) {
+  const denied = await verifyBotOrSession(req);
+  if (denied) return denied;
   const { searchParams } = new URL(req.url);
   const limit = parseInt(searchParams.get("limit") ?? "50");
   const status = searchParams.get("status");
@@ -20,6 +23,8 @@ export async function GET(req: Request) {
 
 // Called by Python bot to record a new trade
 export async function POST(req: Request) {
+  const denied = await verifyBotSecret(req);
+  if (denied) return denied;
   try {
     const body = await req.json();
     const trade = await prisma.trade.create({

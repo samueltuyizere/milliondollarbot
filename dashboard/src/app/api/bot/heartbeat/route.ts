@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyBotSecret } from "@/lib/bot-auth";
 
 // POST /api/bot/heartbeat — called by the Python bot every N seconds
 export async function POST(req: Request) {
+  const denied = await verifyBotSecret(req);
+  if (denied) return denied;
   try {
     const body = await req.json() as {
       status?: string;

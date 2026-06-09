@@ -10,7 +10,11 @@ from datetime import datetime, timezone
 
 
 DASHBOARD_URL = os.environ.get("DASHBOARD_URL", "http://localhost:3000")
+_BOT_SECRET = os.environ.get("BOT_SECRET", "")
+
 _session = requests.Session()
+if _BOT_SECRET:
+    _session.headers.update({"X-Bot-Secret": _BOT_SECRET})
 
 
 def log(level: str, source: str, message: str, metadata: dict = None):

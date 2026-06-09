@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifyBotOrSession, verifyBotSecret } from "@/lib/bot-auth";
 
 export async function GET(req: Request) {
+  const denied = await verifyBotOrSession(req);
+  if (denied) return denied;
   const { searchParams } = new URL(req.url);
   const limit = parseInt(searchParams.get("limit") ?? "100");
   const level = searchParams.get("level");
@@ -19,6 +22,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const denied = await verifyBotSecret(req);
+  if (denied) return denied;
+
   try {
     const body = await req.json();
     const log = await prisma.systemLog.create({
