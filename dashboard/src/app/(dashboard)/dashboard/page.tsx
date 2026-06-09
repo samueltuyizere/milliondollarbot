@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X, Target, Percent } from "lucide-react";
+import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X, Target } from "lucide-react";
 // X kept for the close confirm dialog
 import { TradeDetailModal } from "@/components/ui/trade-detail-modal";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -132,12 +132,10 @@ export default function DashboardPage() {
   const pnlPct = stats ? (stats.dailyPnl / balance) * 100 : 0;
   const pnlTone = !stats ? "neutral" : stats.dailyPnl > 0 ? "profit" : stats.dailyPnl < 0 ? "loss" : "neutral";
 
-  const { winRate, totalPnl } = useMemo(() => {
-    const closed = chartTrades.filter((t) => t.status !== "OPEN");
-    const wins = closed.filter((t) => t.status === "CLOSED_WIN").length;
-    const wr = closed.length > 0 ? (wins / closed.length) * 100 : 0;
-    const tp = closed.reduce((sum, t) => sum + (t.pnl ?? 0), 0);
-    return { winRate: wr, totalPnl: tp };
+  const totalPnl = useMemo(() => {
+    return chartTrades
+      .filter((t) => t.status !== "OPEN")
+      .reduce((sum, t) => sum + (t.pnl ?? 0), 0);
   }, [chartTrades]);
   const totalPnlTone = totalPnl > 0 ? "profit" : totalPnl < 0 ? "loss" : "neutral";
 
@@ -165,7 +163,7 @@ export default function DashboardPage() {
       )}
 
       {/* KPI grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <StatCard
           label="Equity"
           value={loading ? "—" : `$${(stats?.equity ?? 0).toLocaleString("en-US", { maximumFractionDigits: 0 })}`}
@@ -190,13 +188,6 @@ export default function DashboardPage() {
             ? `Ping ${new Date(stats.lastPing).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`
             : "No heartbeat"}
           icon={<Activity className="w-4 h-4" />}
-          tone="neutral"
-        />
-        <StatCard
-          label="Win Rate"
-          value={loading ? "—" : `${winRate.toFixed(1)}%`}
-          sub={`${chartTrades.filter((t) => t.status === "CLOSED_WIN").length} wins of ${chartTrades.filter((t) => t.status !== "OPEN").length} closed`}
-          icon={<Percent className="w-4 h-4" />}
           tone="neutral"
         />
         <StatCard
