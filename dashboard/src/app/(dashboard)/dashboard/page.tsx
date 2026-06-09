@@ -211,6 +211,7 @@ export default function DashboardPage() {
           sub={`${((totalPnl / balance) * 100).toFixed(3)}% of balance`}
           icon={totalPnl >= 0 ? <Target className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
           tone={totalPnlTone}
+          className="hidden lg:flex"
         />
       </div>
 
