@@ -110,7 +110,8 @@ class RiskGuard:
         now_utc = datetime.now(timezone.utc).strftime("%H:%M")
         start = self.cfg.get("session_start", "08:00")
         end = self.cfg.get("session_end", "17:00")
-        if not (start <= now_utc <= end):
+        # start is inclusive, end is exclusive — no new entries AT or after end time
+        if not (start <= now_utc < end):
             return False, f"Outside session window ({start}–{end} UTC)"
         return True, ""
 

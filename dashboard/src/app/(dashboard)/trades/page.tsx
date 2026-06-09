@@ -173,7 +173,6 @@ export default function TradesPage() {
                     <th className="px-4 py-2.5 text-right  text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground hidden sm:table-cell">Lots</th>
                     <th className="px-4 py-2.5 text-right  text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">P&L</th>
                     <th className="px-4 py-2.5 text-right  text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">Status</th>
-                    <th className="px-4 py-2.5 text-right  text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -222,23 +221,6 @@ export default function TradesPage() {
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         <TradeStatusBadge status={t.status} />
-                      </td>
-                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        {t.status === "OPEN" && (
-                          t.manualClose ? (
-                            <span className="text-[10px] text-muted-foreground italic">Closing…</span>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={closingId === t.id}
-                              onClick={() => setCloseTarget(t)}
-                              className="h-6 px-2 text-[10px] text-red-400 hover:text-red-400 hover:bg-red-400/10 gap-1"
-                            >
-                              <X className="w-3 h-3" /> Close
-                            </Button>
-                          )
-                        )}
                       </td>
                     </tr>
                   ))}

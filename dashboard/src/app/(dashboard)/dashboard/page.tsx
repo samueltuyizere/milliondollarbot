@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X } from "lucide-react";
+// X kept for the close confirm dialog
 import { TradeDetailModal } from "@/components/ui/trade-detail-modal";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -250,7 +251,6 @@ export default function DashboardPage() {
                     <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground hidden sm:table-cell">TP</th>
                     <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">P&L</th>
                     <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">Status</th>
-                    <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-[0.07em] text-muted-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -317,24 +317,6 @@ export default function DashboardPage() {
                       })()}
                       <td className="px-4 py-2.5 text-right">
                         <TradeStatusBadge status={t.status} />
-                      </td>
-                      <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                        {t.status === "OPEN" && (
-                          t.manualClose ? (
-                            <span className="text-[10px] text-muted-foreground italic">Closing…</span>
-                          ) : (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={closingId === t.id}
-                              onClick={() => setCloseTarget(t)}
-                              className="h-6 px-2 text-[10px] text-[--loss] hover:text-[--loss] hover:bg-[--loss]/10 gap-1"
-                            >
-                              <X className="w-3 h-3" />
-                              Close
-                            </Button>
-                          )
-                        )}
                       </td>
                     </tr>
                   ))}
