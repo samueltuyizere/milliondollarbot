@@ -12,10 +12,10 @@ const toneStyles: Record<Tone, string> = {
 
 // Subtle background + border tint for the card itself
 const cardToneStyles: Record<Tone, string> = {
-  profit:  "bg-emerald-500/[0.06] border-emerald-500/30",
-  loss:    "bg-red-500/[0.06] border-red-500/30",
-  warning: "bg-amber-500/[0.06] border-amber-500/30",
-  gold:    "bg-[--gold]/[0.06] border-[--gold]/30",
+  profit:  "bg-emerald-500/[0.06] border-border",
+  loss:    "bg-red-500/[0.06] border-border",
+  warning: "bg-amber-500/[0.06] border-border",
+  gold:    "bg-[--gold]/[0.06] border-border",
   neutral: "bg-card border-border",
 };
 
