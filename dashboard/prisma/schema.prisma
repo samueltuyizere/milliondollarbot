@@ -10,22 +10,46 @@ datasource db {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
-  passwordHash  String    @map("password_hash")
-  role          Role      @default(TRADER)
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  name                    String?
+  passwordHash            String    @map("password_hash")
+  roleId                  String    @map("role_id")
+  role                    Role      @relation(fields: [roleId], references: [id])
+  isActive                Boolean   @default(true)  @map("is_active")
+  passwordChangeRequired  Boolean   @default(false) @map("password_change_required")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
 
   auditLogs     AuditLog[]
 
   @@map("users")
 }
 
-enum Role {
-  ADMIN
-  TRADER
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+
+  permissions Permission[]
+  users       User[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  description String?
+  category    String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  roles Role[]
+
+  @@map("permissions")
 }
 
 // ─── Accounts ────────────────────────────────────────────────────────────────

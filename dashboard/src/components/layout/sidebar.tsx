@@ -14,9 +14,13 @@ import {
   User,
   ChevronRight,
   PanelLeftClose,
+  Users,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useModals, type AppModal } from "@/context/modal-context";
+import { usePermissions } from "@/hooks/use-permissions";
+import { PERMISSIONS } from "@/lib/permissions";
 
 const ROUTE_NAV = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -24,6 +28,11 @@ const ROUTE_NAV = [
   { href: "/calendar",  icon: Calendar,        label: "Calendar" },
   { href: "/logs",      icon: ScrollText,      label: "Logs" },
 ];
+
+const SETTINGS_NAV = [
+  { href: "/settings/users",  icon: Users,  label: "Users",       permission: PERMISSIONS.USERS_VIEW },
+  { href: "/settings/roles",  icon: Shield, label: "Roles",       permission: PERMISSIONS.ROLES_VIEW },
+] as const;
 
 const MODAL_NAV: { id: AppModal; icon: React.ElementType; label: string }[] = [
   { id: "bot", icon: Bot, label: "Bot Control" },
@@ -111,6 +120,7 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
   const pathname = usePathname();
   const { data: session } = useSession();
   const { openModal } = useModals();
+  const { can } = usePermissions();
 
   const name =
     (session?.user as { name?: string })?.name ??
@@ -157,13 +167,13 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
         )}
       >
         <div className="p-4 sm:p-5 border-b border-sidebar-border shrink-0 mb-2">
-          <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
+          <div className="relative flex items-center">
             <Link
               href="/dashboard"
               onClick={handleLinkClick}
               className={cn(
                 "flex items-center gap-3 min-h-11 min-w-0",
-                collapsed ? "flex-1 justify-center" : "flex-1"
+                collapsed ? "w-full justify-center" : "flex-1"
               )}
             >
               <div
@@ -186,7 +196,7 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
               )}
             </Link>
 
-            <span className="hidden lg:inline-flex">
+            <span className={cn("hidden lg:inline-flex", collapsed && "absolute right-0")}>
               <button
                 type="button"
                 onClick={handleCollapseToggle}
@@ -278,6 +288,32 @@ export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: Sideb
               />
             ))}
           </ul>
+
+          {/* Settings section — only visible when user has at least one settings permission */}
+          {SETTINGS_NAV.some((item) => can(item.permission)) && (
+            <>
+              {!collapsed && (
+                <div className="px-5 md:px-7 pt-4 pb-1.5" role="presentation">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/40">
+                    Settings
+                  </span>
+                </div>
+              )}
+              <ul className="list-none p-0 m-0 flex flex-col">
+                {SETTINGS_NAV.filter((item) => can(item.permission)).map((item) => (
+                  <NavLinkItem
+                    key={item.href}
+                    href={item.href}
+                    icon={item.icon}
+                    label={item.label}
+                    active={pathname.startsWith(item.href)}
+                    collapsed={collapsed}
+                    onClick={handleLinkClick}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
         </nav>
       </aside>
     </>

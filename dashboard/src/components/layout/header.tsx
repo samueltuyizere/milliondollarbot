@@ -21,10 +21,12 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { BotMode } from "@/types";
 
 const PAGE_TITLES: Record<string, { title: string; description?: string }> = {
-  "/dashboard": { title: "Dashboard",    description: "Overview & live P&L" },
-  "/trades":    { title: "Trades",       description: "Full trade history & open positions" },
-  "/calendar":  { title: "Calendar",    description: "News & bank holidays" },
-  "/logs":      { title: "Logs",         description: "System, trades & audit" },
+  "/dashboard":        { title: "Dashboard",           description: "Overview & live P&L" },
+  "/trades":           { title: "Trades",              description: "Full trade history & open positions" },
+  "/calendar":         { title: "Calendar",            description: "News & bank holidays" },
+  "/logs":             { title: "Logs",                description: "System, trades & audit" },
+  "/settings/users":   { title: "Users",               description: "Manage user accounts and roles" },
+  "/settings/roles":   { title: "Roles & Permissions", description: "Define roles and assign permissions" },
 };
 
 interface HeaderProps {
@@ -94,7 +96,10 @@ export function Header({ onMenuToggle }: HeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const page = PAGE_TITLES[pathname] ?? { title: "AITrader" };
+  const page =
+    PAGE_TITLES[pathname] ??
+    Object.entries(PAGE_TITLES).find(([k]) => pathname.startsWith(k))?.[1] ??
+    { title: "AITrader" };
   const name =
     (session?.user as { name?: string })?.name ??
     session?.user?.email?.split("@")[0] ??

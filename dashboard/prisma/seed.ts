@@ -6,6 +6,18 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("Seeding database…");
 
+  // Ensure the system ADMIN role exists (created by migration, but guard against fresh seeds)
+  const adminRole = await prisma.role.upsert({
+    where: { name: "ADMIN" },
+    update: {},
+    create: {
+      id: "role_admin_sys",
+      name: "ADMIN",
+      description: "Full system access — can manage users, roles, and all bot settings",
+      isSystem: true,
+    },
+  });
+
   // Create admin user
   const hash = await bcrypt.hash("admin1234", 12);
   const user = await prisma.user.upsert({
@@ -15,7 +27,7 @@ async function main() {
       email: "admin@aitrader.local",
       name: "Trader",
       passwordHash: hash,
-      role: "ADMIN",
+      roleId: adminRole.id,
     },
   });
   console.log(`User: ${user.email}`);

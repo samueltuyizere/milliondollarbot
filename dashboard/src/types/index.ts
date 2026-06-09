@@ -28,6 +28,7 @@ export interface TradeRow {
   status: TradeStatus;
   openTime: string;
   closeTime?: string | null;
+  closePrice?: number | null;
   pnl?: number | null;
   manualClose?: boolean;
 }
