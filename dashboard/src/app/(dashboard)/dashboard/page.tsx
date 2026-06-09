@@ -179,7 +179,7 @@ export default function DashboardPage() {
           value={loading ? "—" : `${(stats?.drawdownPct ?? 0).toFixed(2)}%`}
           sub="Max allowed: 4.5%"
           icon={<BarChart2 className="w-4 h-4" />}
-          tone={ddTone}
+          tone="neutral"
         />
         <StatCard
           label="Open Trades"
