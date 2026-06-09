@@ -116,19 +116,21 @@ def _check_paper_exits(symbol: str, price: float, high: float, low: float):
         )
 
 
-def _check_manual_close_requests(symbol: str, price: float) -> None:
+def _check_manual_close_requests(symbol: str, price: float) -> bool:
+    """Returns True if any trade was manually closed this cycle."""
     """Poll the dashboard for any open trades flagged for manual close and close them."""
     global today_pnl
     if not open_trades:
-        return
+        return False
     try:
         from utils.db_writer import _session, DASHBOARD_URL
         r = _session.get(f"{DASHBOARD_URL}/api/trades?status=OPEN&limit=50", timeout=5)
         flagged = [t for t in r.json().get("trades", []) if t.get("manualClose")]
     except Exception as e:
         log("WARNING", "mock", f"Manual close check failed: {e}")
-        return
+        return False
 
+    closed_any = False
     for t in flagged:
         trade_id = t["id"]
         if trade_id in open_trades:
@@ -144,11 +146,13 @@ def _check_manual_close_requests(symbol: str, price: float) -> None:
         pnl = calc_pnl(pos["direction"], pos["entry"], price, pos["lot_size"], symbol)
         report_trade_closed(trade_id, price, pnl)
         today_pnl += pnl
+        closed_any = True
         log(
             "INFO",
             "mock",
             f"Manual close: {pos['direction']} @ {pos['entry']:.2f} → {price:.2f} | P&L ${pnl:+.2f}",
         )
+    return closed_any
 
 
 def _open_paper_trade(cfg: dict, signal: dict, lot_size: float) -> None:
@@ -295,7 +299,7 @@ def main():
             _check_paper_exits(symbol, price, max(price, bar_high), min(price, bar_low))
 
             # Check for manual close requests from the dashboard
-            _check_manual_close_requests(symbol, price)
+            manual_closed = _check_manual_close_requests(symbol, price)
 
             equity = balance + today_pnl + _floating_pnl(symbol, price)
             if equity > peak_equity:
@@ -310,6 +314,10 @@ def main():
                 last_heartbeat = now
 
             # ── Strategy (same as main.py) ──────────────────────────────────
+            if manual_closed:
+                time.sleep(POLL_SECONDS)
+                continue
+
             if len(open_trades) >= cfg["max_open_trades"]:
                 time.sleep(POLL_SECONDS)
                 continue
