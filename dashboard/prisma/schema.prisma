@@ -83,6 +83,7 @@ model BotStatus {
   drawdownPct Float?    @default(0) @map("drawdown_pct")
   openTrades  Int       @default(0) @map("open_trades")
   errorMsg    String?   @map("error_msg")
+  botMode     String?   @map("bot_mode") // "mock" | "live"
   updatedAt   DateTime  @updatedAt @default(now()) @map("updated_at")
 
   @@map("bot_status")
@@ -152,8 +153,9 @@ model Trade {
   pnlPct      Float?      @map("pnl_pct")
   commission  Float?
   swap        Float?
-  notes       String?
-  createdAt   DateTime    @default(now()) @map("created_at")
+  notes         String?
+  manualClose   Boolean   @default(false) @map("manual_close")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   logs        TradeLog[]
 

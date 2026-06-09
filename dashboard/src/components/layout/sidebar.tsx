@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   Bot,
@@ -10,251 +10,276 @@ import {
   Calendar,
   ScrollText,
   TrendingUp,
-  LogOut,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
+  BarChart2,
   User,
+  ChevronRight,
+  PanelLeftClose,
 } from "lucide-react";
-import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import { useModals, type AppModal } from "@/context/modal-context";
 
-const NAV = [
+const ROUTE_NAV = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/bot",       icon: Bot,             label: "Bot Control" },
-  { href: "/config",    icon: Settings2,        label: "Configuration" },
-  { href: "/calendar",  icon: Calendar,         label: "Calendar" },
-  { href: "/logs",      icon: ScrollText,       label: "Logs" },
+  { href: "/trades",    icon: BarChart2,       label: "Trades" },
+  { href: "/calendar",  icon: Calendar,        label: "Calendar" },
+  { href: "/logs",      icon: ScrollText,      label: "Logs" },
 ];
 
-// ─── Nav item ──────────────────────────────────────────────────────────────
+const MODAL_NAV: { id: AppModal; icon: React.ElementType; label: string }[] = [
+  { id: "bot", icon: Bot, label: "Bot Control" },
+  { id: "config", icon: Settings2, label: "Configuration" },
+];
 
-function NavItem({
-  href, icon: Icon, label, active, collapsed, onClick,
-}: {
-  href: string; icon: React.ElementType; label: string;
-  active: boolean; collapsed: boolean; onClick?: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={onClick}
-      title={collapsed ? label : undefined}
-      className={cn(
-        "group relative flex items-center gap-3 rounded-md transition-all duration-150",
-        collapsed ? "justify-center px-0 py-2.5 mx-1" : "px-3 py-2.5 mx-0",
-        active
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-      )}
-    >
-      {/* Active left-border accent */}
-      {active && !collapsed && (
-        <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
-      )}
-      <Icon
-        className={cn(
-          "shrink-0 transition-colors",
-          collapsed ? "w-[18px] h-[18px]" : "w-4 h-4",
-          active ? "text-primary" : "text-muted-foreground group-hover:text-foreground"
-        )}
-      />
-      {!collapsed && (
-        <span className={cn("text-[13px] truncate", active ? "font-medium tracking-tight" : "font-normal")}>
-          {label}
-        </span>
-      )}
-    </Link>
-  );
-}
-
-// ─── Sidebar content ────────────────────────────────────────────────────────
-
-function SidebarContent({
-  pathname,
-  collapsed,
-  onToggleCollapse,
-  onNavClick,
-}: {
-  pathname: string;
+interface SidebarProps {
+  isOpen: boolean;
   collapsed: boolean;
-  onToggleCollapse: () => void;
-  onNavClick?: () => void;
+  onClose: () => void;
+  onCollapsedChange: (collapsed: boolean) => void;
+}
+
+function NavLinkItem({
+  href,
+  icon: Icon,
+  label,
+  active,
+  collapsed,
+  onClick,
+}: {
+  href: string;
+  icon: React.ElementType;
+  label: string;
+  active: boolean;
+  collapsed: boolean;
+  onClick?: () => void;
 }) {
-  const { data: session } = useSession();
-  const name = (session?.user as any)?.name ?? session?.user?.email?.split("@")[0] ?? "Trader";
-  const email = session?.user?.email ?? "";
-
   return (
-    <div className="flex flex-col h-full">
-
-      {/* ── Logo / wordmark ── */}
-      <div className={cn(
-        "flex items-center border-b border-border h-14 shrink-0",
-        collapsed ? "justify-center px-2" : "px-4 gap-2.5"
-      )}>
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-          style={{
-            background: "linear-gradient(135deg, rgba(209,158,0,0.2), rgba(209,158,0,0.07))",
-            border: "1px solid rgba(209,158,0,0.25)",
-          }}
-        >
-          <TrendingUp className="w-4 h-4 text-amber-400" />
-        </div>
+    <li className="my-0.5">
+      <Link
+        href={href}
+        onClick={onClick}
+        title={collapsed ? label : undefined}
+        className={cn(
+          "flex items-center gap-3 min-h-[44px] w-full text-left transition-all duration-200",
+          collapsed ? "justify-center px-3 py-3" : "px-5 md:px-7 py-3",
+          active
+            ? "bg-sidebar-accent text-sidebar-foreground border-l-4 border-primary"
+            : "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground border-l-4 border-transparent"
+        )}
+      >
+        <Icon className={cn("shrink-0 w-[18px] h-[18px]", active && "text-primary")} />
         {!collapsed && (
-          <>
-            <div className="flex-1 min-w-0">
-              <p className="text-[14px] font-bold tracking-[-0.03em] leading-none">AITrader</p>
-              <p className="text-[9px] text-muted-foreground/60 mt-0.5 font-mono tracking-widest uppercase">XAUUSD</p>
-            </div>
-            <button
-              onClick={onToggleCollapse}
-              className="w-6 h-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
-              title="Collapse sidebar"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-          </>
+          <span className="text-sm font-medium flex-1 truncate">{label}</span>
         )}
-        {collapsed && (
-          <button
-            onClick={onToggleCollapse}
-            className="absolute bottom-20 -right-3 w-6 h-6 flex items-center justify-center rounded-full bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm transition-colors z-10"
-            title="Expand sidebar"
-            suppressHydrationWarning
-          >
-            <ChevronRight className="w-3 h-3" />
-          </button>
-        )}
-      </div>
-
-      {/* ── Navigation ── */}
-      <nav className={cn("flex-1 py-2 overflow-y-auto", collapsed ? "px-0" : "px-2")}>
-        <div className="space-y-0.5">
-          {NAV.map(item => (
-            <NavItem
-              key={item.href}
-              {...item}
-              active={pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href))}
-              collapsed={collapsed}
-              onClick={onNavClick}
-            />
-          ))}
-        </div>
-      </nav>
-
-      {/* ── User + footer ── */}
-      <div className={cn("border-t border-border py-2 shrink-0", collapsed ? "px-0" : "px-2")}>
-        {/* User info */}
-        {!collapsed && (
-          <div className="flex items-center gap-2.5 px-3 py-2 mb-1 rounded-md">
-            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <User className="w-3.5 h-3.5 text-primary" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium leading-none truncate" suppressHydrationWarning>{name}</p>
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5 truncate" suppressHydrationWarning>{email}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Phase indicator */}
-        {!collapsed && (
-          <div className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-muted-foreground/50 mb-0.5">
-            <Shield className="w-3.5 h-3.5 shrink-0" />
-            <span>FundedNext · Phase 1</span>
-          </div>
-        )}
-
-        {/* Sign out */}
-        <Link
-          href="/api/auth/signout"
-          title={collapsed ? "Sign out" : undefined}
-          className={cn(
-            "flex items-center gap-2.5 rounded-md text-[13px] text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors",
-            collapsed ? "justify-center px-0 py-2.5 mx-1" : "px-3 py-2"
-          )}
-        >
-          <LogOut className="w-4 h-4 shrink-0" />
-          {!collapsed && <span>Sign out</span>}
-        </Link>
-      </div>
-    </div>
+      </Link>
+    </li>
   );
 }
 
-// ─── Sidebar export ─────────────────────────────────────────────────────────
+function NavModalItem({
+  icon: Icon,
+  label,
+  collapsed,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <li className="my-0.5">
+      <button
+        type="button"
+        onClick={onClick}
+        title={collapsed ? label : undefined}
+        className={cn(
+          "flex items-center gap-3 min-h-[44px] w-full text-left transition-all duration-200",
+          collapsed ? "justify-center px-3 py-3" : "px-5 md:px-7 py-3",
+          "text-sidebar-foreground/70 hover:bg-sidebar-accent/70 hover:text-sidebar-foreground border-l-4 border-transparent"
+        )}
+      >
+        <Icon className="shrink-0 w-[18px] h-[18px]" />
+        {!collapsed && (
+          <span className="text-sm font-medium flex-1 truncate text-left">{label}</span>
+        )}
+      </button>
+    </li>
+  );
+}
 
-export function Sidebar() {
+export function Sidebar({ isOpen, collapsed, onClose, onCollapsedChange }: SidebarProps) {
   const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { data: session } = useSession();
+  const { openModal } = useModals();
 
-  // Persist collapse state
-  useEffect(() => {
-    const saved = localStorage.getItem("aitrader_sidebar_collapsed");
-    if (saved === "true") setCollapsed(true);
-  }, []);
+  const name =
+    (session?.user as { name?: string })?.name ??
+    session?.user?.email?.split("@")[0] ??
+    "Trader";
+  const email = session?.user?.email ?? "";
+  const role = ((session?.user as { role?: string })?.role ?? "TRADER").toLowerCase();
+  const roleLabel = role === "admin" ? "Administrator" : "Trader";
+  const initials = name.slice(0, 2).toUpperCase();
 
-  function toggleCollapse() {
-    setCollapsed(prev => {
-      localStorage.setItem("aitrader_sidebar_collapsed", String(!prev));
-      return !prev;
-    });
-  }
+  const handleCollapseToggle = () => {
+    onCollapsedChange(!collapsed);
+  };
+
+  const handleLinkClick = () => {
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      onClose();
+    }
+  };
+
+  const handleModalOpen = (id: AppModal) => {
+    openModal(id);
+    handleLinkClick();
+  };
 
   return (
     <>
-      {/* ── Desktop sidebar ── */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-[2px] z-40 lg:hidden min-h-dvh"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
       <aside
         className={cn(
-          "hidden md:flex flex-col shrink-0 border-r border-border bg-sidebar h-screen sticky top-0 transition-all duration-200 relative",
-          collapsed ? "w-[64px]" : "w-[220px]"
+          "fixed top-0 left-0 z-50 flex flex-col overflow-y-auto overflow-x-hidden",
+          "h-full min-h-dvh transition-all duration-300 ease-in-out",
+          "w-[280px] max-w-[85vw] lg:max-w-none lg:translate-x-0",
+          "bg-sidebar border-r border-sidebar-border text-sidebar-foreground",
+          isOpen ? "translate-x-0" : "-translate-x-full",
+          collapsed ? "lg:w-20" : "lg:w-64"
         )}
       >
-        <SidebarContent
-          pathname={pathname}
-          collapsed={collapsed}
-          onToggleCollapse={toggleCollapse}
-        />
-      </aside>
-
-      {/* ── Mobile hamburger ── */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="md:hidden fixed top-3.5 left-3.5 z-50 w-8 h-8 flex items-center justify-center rounded-md bg-card border border-border text-muted-foreground hover:text-foreground transition-colors"
-        aria-label="Open navigation"
-      >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-
-      {/* ── Mobile drawer ── */}
-      {mobileOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex" onClick={() => setMobileOpen(false)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <aside
-            className="relative w-[220px] bg-sidebar border-r border-border h-full flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setMobileOpen(false)}
-              className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+        <div className="p-4 sm:p-5 border-b border-sidebar-border shrink-0 mb-2">
+          <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-3")}>
+            <Link
+              href="/dashboard"
+              onClick={handleLinkClick}
+              className={cn(
+                "flex items-center gap-3 min-h-11 min-w-0",
+                collapsed ? "flex-1 justify-center" : "flex-1"
+              )}
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-            <SidebarContent
-              pathname={pathname}
-              collapsed={false}
-              onToggleCollapse={() => {}}
-              onNavClick={() => setMobileOpen(false)}
-            />
-          </aside>
+              <div
+                className="relative shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
+                style={{
+                  background:
+                    "linear-gradient(135deg, rgba(209,158,0,0.22), rgba(209,158,0,0.08))",
+                  border: "1px solid rgba(209,158,0,0.28)",
+                }}
+              >
+                <TrendingUp className="w-5 h-5 text-primary" />
+              </div>
+              {!collapsed && (
+                <div className="flex flex-col min-w-0">
+                  <span className="text-lg font-semibold leading-tight truncate">AITrader</span>
+                  <span className="text-xs text-sidebar-foreground/60 leading-tight">
+                    MillionDollarBot
+                  </span>
+                </div>
+              )}
+            </Link>
+
+            <span className="hidden lg:inline-flex">
+              <button
+                type="button"
+                onClick={handleCollapseToggle}
+                className="p-2 min-w-11 min-h-11 flex items-center justify-center rounded-md text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {collapsed ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <PanelLeftClose className="w-4 h-4" />
+                )}
+              </button>
+            </span>
+          </div>
         </div>
-      )}
+
+        <div
+          className={cn(
+            "shrink-0 flex flex-col items-center gap-3 mb-2 p-4 sm:p-6",
+            collapsed ? "lg:px-3" : ""
+          )}
+        >
+          <div
+            className={cn(
+              "rounded-full flex items-center justify-center font-bold text-primary",
+              "bg-black/25 border-2 border-primary/35 transition-all duration-300",
+              "hover:bg-black/35 hover:border-primary/50",
+              collapsed ? "w-12 h-12 text-xs lg:w-12 lg:h-12" : "w-20 h-20 sm:w-24 sm:h-24 text-lg"
+            )}
+          >
+            {collapsed ? (
+              <User className="w-5 h-5 text-primary/90" />
+            ) : (
+              <span suppressHydrationWarning>{initials}</span>
+            )}
+          </div>
+
+          {!collapsed && (
+            <div className="text-center w-full min-w-0">
+              <p className="text-sm font-semibold truncate" suppressHydrationWarning>
+                {name}
+              </p>
+              {email && (
+                <p
+                  className="text-xs text-sidebar-foreground/55 truncate max-w-[200px] mx-auto mt-0.5"
+                  suppressHydrationWarning
+                >
+                  {email}
+                </p>
+              )}
+              <p className="text-[10px] text-primary font-semibold uppercase tracking-[0.14em] mt-1.5">
+                {roleLabel}
+              </p>
+              <p className="text-[10px] text-sidebar-foreground/45 mt-0.5">Phase 1 · $500k</p>
+            </div>
+          )}
+        </div>
+
+        <nav className="flex-1 py-0 overflow-y-auto min-h-0">
+          {!collapsed && (
+            <div className="px-5 md:px-7 pt-1 pb-1.5" role="presentation">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/40">
+                Trading
+              </span>
+            </div>
+          )}
+
+          <ul className="list-none p-0 m-0 flex flex-col">
+            {ROUTE_NAV.map((item) => (
+              <NavLinkItem
+                key={item.href}
+                {...item}
+                active={
+                  pathname === item.href ||
+                  (item.href !== "/" && pathname.startsWith(item.href))
+                }
+                collapsed={collapsed}
+                onClick={handleLinkClick}
+              />
+            ))}
+            {MODAL_NAV.map((item) => (
+              <NavModalItem
+                key={item.id}
+                icon={item.icon}
+                label={item.label}
+                collapsed={collapsed}
+                onClick={() => handleModalOpen(item.id)}
+              />
+            ))}
+          </ul>
+        </nav>
+      </aside>
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── Bot status ───────────────────────────────────────────────────────────────
@@ -53,13 +54,17 @@ export function TradeStatusBadge({ status }: { status: TradeStatus }) {
 // ─── Direction badge ──────────────────────────────────────────────────────────
 
 export function DirectionBadge({ direction }: { direction: "BUY" | "SELL" }) {
+  const isBuy = direction === "BUY";
   return (
     <span className={cn(
-      "inline-flex items-center px-2 py-0.5 rounded text-xs font-bold tabular",
-      direction === "BUY"
-        ? "text-[--profit] bg-[--profit]/10"
-        : "text-[--loss] bg-[--loss]/10"
+      "inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-bold",
+      isBuy
+        ? "text-[--profit] bg-[--profit]/10 border-[--profit]/25"
+        : "text-[--loss]   bg-[--loss]/10   border-[--loss]/25"
     )}>
+      {isBuy
+        ? <TrendingUp  className="w-3 h-3 shrink-0" />
+        : <TrendingDown className="w-3 h-3 shrink-0" />}
       {direction}
     </span>
   );

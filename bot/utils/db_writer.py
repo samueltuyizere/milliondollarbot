@@ -51,8 +51,59 @@ def report_trade_closed(trade_id: str, close_price: float, pnl: float, commissio
         log("ERROR", "db", f"report_trade_closed exception: {e}")
 
 
+def restore_session_state(base_balance: float) -> dict:
+    """
+    Query closed trade history from the dashboard and return:
+      - today_pnl    : sum of PnL for trades closed today (UTC)
+      - total_pnl    : sum of PnL across all closed trades (to offset base balance)
+      - peak_equity  : historical equity peak (base_balance + max running cumulative PnL)
+
+    Returns a dict with keys today_pnl, total_pnl, peak_equity.
+    Falls back to zeros if the API is unreachable.
+    """
+    from datetime import datetime, timezone
+    result = {"today_pnl": 0.0, "total_pnl": 0.0, "peak_equity": base_balance}
+    try:
+        r = _session.get(f"{DASHBOARD_URL}/api/trades?limit=10000", timeout=5)
+        trades = r.json().get("trades", [])
+
+        closed_statuses = {"CLOSED_WIN", "CLOSED_LOSS", "CLOSED_BE"}
+        closed = [t for t in trades if t.get("status") in closed_statuses and t.get("pnl") is not None]
+
+        # Sort by closeTime ascending to compute running equity peak
+        closed.sort(key=lambda t: t.get("closeTime") or t.get("createdAt") or "")
+
+        today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        running_pnl = 0.0
+        today_pnl = 0.0
+
+        for t in closed:
+            pnl = float(t["pnl"])
+            running_pnl += pnl
+            current_equity = base_balance + running_pnl
+            if current_equity > result["peak_equity"]:
+                result["peak_equity"] = current_equity
+
+            close_time = t.get("closeTime") or ""
+            if close_time.startswith(today_str):
+                today_pnl += pnl
+
+        result["total_pnl"] = running_pnl
+        result["today_pnl"] = today_pnl
+
+        log("INFO", "db", (
+            f"Session restored — today P&L: ${today_pnl:+.2f} | "
+            f"all-time P&L: ${running_pnl:+.2f} | "
+            f"peak equity: ${result['peak_equity']:,.2f}"
+        ))
+    except Exception as e:
+        log("WARNING", "db", f"Could not restore session state: {e}")
+    return result
+
+
 def send_heartbeat(equity: float, balance: float, daily_pnl: float, peak_equity: float,
-                   open_trades: int, status: str = "RUNNING", error_msg: str = None):
+                   open_trades: int, status: str = "RUNNING", error_msg: str = None,
+                   bot_mode: str = "live"):
     """POST /api/bot/heartbeat"""
     try:
         dd_pct = ((peak_equity - equity) / peak_equity * 100) if peak_equity and peak_equity > 0 else 0
@@ -67,6 +118,7 @@ def send_heartbeat(equity: float, balance: float, daily_pnl: float, peak_equity:
                 "drawdownPct": dd_pct,
                 "openTrades": open_trades,
                 "errorMsg": error_msg,
+                "botMode": bot_mode,
             },
             timeout=3,
         )

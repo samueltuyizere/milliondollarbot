@@ -42,9 +42,52 @@
   --color-gold: var(--gold);
   --color-surface: var(--surface);
   --color-surface-raised: var(--surface-raised);
+  --color-shell: var(--shell);
 }
 
+/* ─── Light theme (default) ──────────────────────────────── */
 :root {
+  --background: oklch(0.99 0.003 260);
+  --foreground: oklch(0.21 0.01 260);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.01 260);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.01 260);
+  --primary: oklch(0.55 0.13 70);        /* deep amber/gold — readable on light */
+  --primary-foreground: oklch(0.99 0.003 260);
+  --secondary: oklch(0.95 0.004 260);
+  --secondary-foreground: oklch(0.25 0.01 260);
+  --muted: oklch(0.96 0.004 260);
+  --muted-foreground: oklch(0.48 0.012 260);
+  --accent: oklch(0.95 0.004 260);
+  --accent-foreground: oklch(0.25 0.01 260);
+  --destructive: oklch(0.55 0.21 25);
+  --border: oklch(0.21 0.01 260 / 12%);
+  --input: oklch(0.21 0.01 260 / 14%);
+  --ring: oklch(0.55 0.13 70 / 45%);
+  --radius: 0.5rem;
+
+  /* Sidebar */
+  --sidebar: oklch(0.975 0.004 260);
+  --sidebar-foreground: oklch(0.21 0.01 260);
+  --sidebar-primary: oklch(0.55 0.13 70);
+  --sidebar-primary-foreground: oklch(0.99 0.003 260);
+  --sidebar-accent: oklch(0.93 0.005 260);
+  --sidebar-accent-foreground: oklch(0.21 0.01 260);
+  --sidebar-border: oklch(0.21 0.01 260 / 10%);
+  --sidebar-ring: oklch(0.55 0.13 70 / 45%);
+
+  /* Trading semantic */
+  --profit: oklch(0.52 0.16 145);       /* green */
+  --loss: oklch(0.55 0.21 25);          /* red */
+  --gold: oklch(0.55 0.13 70);          /* amber/gold */
+  --surface: oklch(1 0 0);
+  --surface-raised: oklch(0.97 0.004 260);
+  --shell: oklch(0.965 0.004 260);
+}
+
+/* ─── Dark theme ─────────────────────────────────────────── */
+.dark {
   --background: oklch(0.13 0.005 260);
   --foreground: oklch(0.96 0.004 260);
   --card: oklch(0.17 0.006 260);
@@ -63,7 +106,6 @@
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
   --ring: oklch(0.78 0.16 75 / 40%);
-  --radius: 0.5rem;
 
   /* Sidebar */
   --sidebar: oklch(0.15 0.006 260);
@@ -81,6 +123,7 @@
   --gold: oklch(0.78 0.16 75);          /* amber/gold */
   --surface: oklch(0.17 0.006 260);
   --surface-raised: oklch(0.20 0.006 260);
+  --shell: oklch(0.11 0.005 260);
 }
 
 @layer base {
@@ -100,11 +143,11 @@
   }
   html {
     scrollbar-width: thin;
-    scrollbar-color: oklch(0.28 0 0) transparent;
+    scrollbar-color: var(--border) transparent;
   }
   ::-webkit-scrollbar { width: 5px; height: 5px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: oklch(0.28 0 0); border-radius: 99px; }
+  ::-webkit-scrollbar-thumb { background: var(--muted-foreground); opacity: 0.4; border-radius: 99px; }
 
   /* Headings — tighter tracking, heavier */
   h1, h2, h3 {
@@ -139,6 +182,36 @@
 /* Utility: mono numbers */
 .tabular { font-variant-numeric: tabular-nums; }
 
+/* App shell — Gemura-style content area */
+.bg-shell {
+  background: var(--shell);
+}
+
+.safe-area-inset {
+  padding-left: env(safe-area-inset-left, 0);
+  padding-right: env(safe-area-inset-right, 0);
+}
+
+.container-content {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 1280px) {
+  .container-content {
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+@media (min-width: 1536px) {
+  .container-content {
+    max-width: 1600px;
+  }
+}
+
 /* Animated dot */
 @keyframes blink {
   0%, 100% { opacity: 1; }
@@ -146,9 +219,9 @@
 }
 .dot-blink { animation: blink 2s ease-in-out infinite; }
 
-/* Subtle scan-line overlay on log panels */
+/* Log panels follow the theme (slightly recessed vs. card) */
 .log-panel {
-  background: oklch(0.12 0.004 260);
+  background: var(--shell);
 }
 
 /* ─── Auth hero animations ───────────────────────────────── */

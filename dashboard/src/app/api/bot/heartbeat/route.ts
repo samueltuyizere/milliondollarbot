@@ -13,6 +13,7 @@ export async function POST(req: Request) {
       drawdownPct?: number;
       openTrades?: number;
       errorMsg?: string | null;
+      botMode?: "mock" | "live";
     };
 
     const existing = await prisma.botStatus.findFirst({ orderBy: { updatedAt: "desc" } });
@@ -26,6 +27,7 @@ export async function POST(req: Request) {
       drawdownPct: body.drawdownPct ?? 0,
       openTrades: body.openTrades ?? 0,
       errorMsg: body.errorMsg ?? null,
+      ...(body.botMode && { botMode: body.botMode }),
       ...(body.status && { status: body.status as "RUNNING" | "PAUSED" | "STOPPED" | "ERROR" | "DAILY_LOCK" }),
     };
 

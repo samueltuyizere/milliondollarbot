@@ -3,6 +3,8 @@ export type TradeDirection = "BUY" | "SELL";
 export type TradeStatus = "PENDING" | "OPEN" | "CLOSED_WIN" | "CLOSED_LOSS" | "CLOSED_BE" | "CANCELLED";
 export type LogLevel = "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 
+export type BotMode = "mock" | "live";
+
 export interface DashboardStats {
   status: BotState;
   equity: number;
@@ -12,6 +14,7 @@ export interface DashboardStats {
   openTrades: number;
   lastPing: string | null;
   errorMsg: string | null;
+  botMode?: BotMode | null;
 }
 
 export interface TradeRow {
@@ -26,6 +29,7 @@ export interface TradeRow {
   openTime: string;
   closeTime?: string | null;
   pnl?: number | null;
+  manualClose?: boolean;
 }
 
 export interface RiskConfig {

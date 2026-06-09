@@ -8,7 +8,7 @@ export async function GET() {
       return NextResponse.json({
         status: {
           status: "STOPPED", lastPing: null, equity: null, balance: null,
-          dailyPnl: 0, drawdownPct: 0, openTrades: 0, errorMsg: null,
+          dailyPnl: 0, drawdownPct: 0, openTrades: 0, errorMsg: null, botMode: null,
         },
       });
     }

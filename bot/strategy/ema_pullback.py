@@ -11,6 +11,7 @@ Signal logic:
 
 Returns a Signal dict or None.
 """
+import os
 from typing import Optional
 import pandas as pd
 import numpy as np
@@ -66,17 +67,30 @@ def check_signal(df: pd.DataFrame, cfg: dict) -> Optional[dict]:
     # Direction: long only in Phase 1
     long_only = cfg.get("long_only", True)
 
+    # Demo mode: relax thresholds so a paper trade fires quickly.
+    # Enabled only when env DEMO_LOOSE=1 (mock bot) — never in live trading.
+    demo_loose = os.environ.get("DEMO_LOOSE") == "1"
+
     # ─── LONG signal ──────────────────────────────────────────────────────────
-    bullish_trend = curr["close"] > curr["ema_slow"]
-    pullback_touched = prev["low"] <= prev["ema_fast"]
-    rsi_dip = prev["rsi"] < cfg["rsi_oversold"]
-    confirmation_close = curr["close"] > curr["ema_fast"]
+    if demo_loose:
+        # Fire a long on every opportunity so a paper trade appears immediately.
+        bullish_trend = True
+        pullback_touched = True
+        rsi_dip = True
+        confirmation_close = True
+    else:
+        bullish_trend = curr["close"] > curr["ema_slow"]
+        pullback_touched = prev["low"] <= prev["ema_fast"]
+        rsi_dip = prev["rsi"] < cfg["rsi_oversold"]
+        confirmation_close = curr["close"] > curr["ema_fast"]
 
     if bullish_trend and pullback_touched and rsi_dip and confirmation_close:
         entry = curr["close"]
         sl_distance = curr["atr"] * cfg["atr_multi_sl"]
+        # Small R:R buffer in demo mode so rounding never trips the guard's min_rr check.
+        rr = cfg["min_rr"] + (0.3 if demo_loose else 0.0)
         sl = entry - sl_distance
-        tp = entry + (sl_distance * cfg["min_rr"])
+        tp = entry + (sl_distance * rr)
 
         return {
             "direction": "BUY",

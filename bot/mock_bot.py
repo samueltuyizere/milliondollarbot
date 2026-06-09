@@ -1,50 +1,72 @@
 """
-Mock Bot — runs on macOS/Linux without MT5.
-Simulates realistic XAUUSD trading activity so you can fully test the dashboard.
+Mock Bot — paper trading on macOS/Linux without MT5.
 
-Behaviour:
-  - Reads config from local DB (same as real bot)
-  - Sends heartbeats every 10s with simulated equity/P&L
-  - Opens a fake BUY trade every ~60s when RUNNING
-  - Closes each fake trade after ~90s with random P&L
-  - Respects Start/Stop/Pause commands from dashboard
-  - Applies the same risk gate (daily lock, drawdown, R:R)
+Uses LIVE gold prices (Yahoo GC=F ≈ XAUUSD) and the same pipeline as main.py:
+  - H1 EMA pullback strategy (ema_pullback.py)
+  - Full RiskGuard (risk_guard.py)
+  - Risk-based lot sizing (lot_sizing.py)
+  - Paper positions closed when live price hits SL/TP
 
 Run with: python mock_bot.py
 """
-
 import os
 import sys
 import time
-import random
 import signal as _signal
-from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Patch out MT5 before importing anything that might import it
+BOT_MODE = "mock"
+
+# Block MT5 import on non-Windows
 import unittest.mock as mock
 sys.modules["MetaTrader5"] = mock.MagicMock()
 
 from config import load_bot_config, get_bot_command
-from utils.db_writer import report_trade_opened, report_trade_closed, send_heartbeat
+from strategy.ema_pullback import check_signal
+from risk.risk_guard import RiskGuard
+from utils.market_data import get_ohlcv, get_current_price
+from utils.lot_sizing import calculate_lot_size, calc_pnl
+from utils.db_writer import report_trade_opened, report_trade_closed, send_heartbeat, restore_session_state
 from utils.logger import log
 
-# ─── Sim state ────────────────────────────────────────────────────────────────
+POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
+HEARTBEAT_SECONDS = int(os.environ.get("HEARTBEAT_SECONDS", "10"))
 
-GOLD_BASE = 2340.0          # Base XAUUSD price
 running = True
-peak_equity = 0.0
-today_pnl = 0.0
+peak_equity: float = 0.0
+today_pnl: float = 0.0
+last_heartbeat = 0.0
 
-# Active fake trades: {dashboard_trade_id: {entry, sl, tp, direction, open_time, lot_size}}
-open_trades: dict = {}
+
+def _init_ticket_seq() -> int:
+    """Start mock ticket sequence after the highest existing paper ticket in the DB."""
+    try:
+        import requests
+        api = os.environ.get("DASHBOARD_API_URL", "http://localhost:3000")
+        r = requests.get(f"{api}/api/trades?limit=1000", timeout=5)
+        trades = r.json().get("trades", [])
+        paper_tickets = [
+            t["mt5Ticket"] for t in trades
+            if t.get("mt5Ticket") and t["mt5Ticket"] >= 900_000
+        ]
+        if paper_tickets:
+            return max(paper_tickets)
+    except Exception:
+        pass
+    return 900_000
+
+
+mock_ticket_seq = _init_ticket_seq()
+
+# trade_id → paper position
+open_trades: dict[str, dict] = {}
 
 
 def graceful_shutdown(signum, frame):
     global running
-    log("INFO", "mock", "Shutdown — stopping mock bot…")
+    log("INFO", "mock", "Shutdown — stopping paper bot…")
     running = False
 
 
@@ -52,47 +74,107 @@ _signal.signal(_signal.SIGTERM, graceful_shutdown)
 _signal.signal(_signal.SIGINT, graceful_shutdown)
 
 
-# ─── Sim helpers ──────────────────────────────────────────────────────────────
-
-def sim_price() -> float:
-    """Slowly drifting gold price with noise."""
-    global GOLD_BASE
-    GOLD_BASE += random.uniform(-1.5, 1.5)
-    return round(GOLD_BASE + random.uniform(-0.5, 0.5), 2)
-
-
-def sim_equity(balance: float) -> float:
-    open_profit = sum(
-        (t["direction"] == "BUY" and 1 or -1) *
-        (sim_price() - t["entry"]) * t["lot_size"] * 100
+def _floating_pnl(symbol: str, price: float) -> float:
+    return sum(
+        calc_pnl(t["direction"], t["entry"], price, t["lot_size"], symbol)
         for t in open_trades.values()
     )
-    return round(balance + today_pnl + open_profit, 2)
 
 
-def generate_signal(cfg: dict) -> dict:
-    price = sim_price()
-    atr = round(random.uniform(8, 18), 2)
-    sl_distance = round(atr * cfg.get("atr_multi_sl", 1.5), 2)
-    min_rr = cfg.get("min_rr", 2.0)
+def _check_paper_exits(symbol: str, price: float, high: float, low: float):
+    """Close paper positions when live price touches SL or TP."""
+    global today_pnl
 
-    return {
-        "direction": "BUY",
-        "entry": price,
-        "sl": round(price - sl_distance, 2),
-        "tp": round(price + sl_distance * min_rr, 2),
-        "symbol": "XAUUSD",
-        "atr": atr,
-        "rsi": round(random.uniform(30, 42), 1),
-    }
+    for trade_id, pos in list(open_trades.items()):
+        direction = pos["direction"]
+        sl, tp = pos["sl"], pos["tp"]
+        hit = None
+        close_price = price
+
+        if direction == "BUY":
+            if low <= sl:
+                hit, close_price = "SL", sl
+            elif high >= tp:
+                hit, close_price = "TP", tp
+        else:
+            if high >= sl:
+                hit, close_price = "SL", sl
+            elif low <= tp:
+                hit, close_price = "TP", tp
+
+        if not hit:
+            continue
+
+        pnl = calc_pnl(direction, pos["entry"], close_price, pos["lot_size"], symbol)
+        today_pnl += pnl
+        report_trade_closed(trade_id, close_price, pnl)
+        del open_trades[trade_id]
+        log(
+            "INFO",
+            "mock",
+            f"Paper {hit} hit: {direction} @ {pos['entry']:.2f} → {close_price:.2f} | P&L ${pnl:+.2f}",
+        )
 
 
-# ─── Main loop ────────────────────────────────────────────────────────────────
+def _check_manual_close_requests(symbol: str, price: float) -> None:
+    """Poll the dashboard for any open trades flagged for manual close and close them."""
+    global today_pnl
+    if not open_trades:
+        return
+    try:
+        from utils.db_writer import _session, DASHBOARD_URL
+        r = _session.get(f"{DASHBOARD_URL}/api/trades?status=OPEN&limit=50", timeout=5)
+        flagged = [t for t in r.json().get("trades", []) if t.get("manualClose")]
+    except Exception as e:
+        log("WARNING", "mock", f"Manual close check failed: {e}")
+        return
+
+    for t in flagged:
+        trade_id = t["id"]
+        if trade_id not in open_trades:
+            continue
+        pos = open_trades[trade_id]
+        pnl = calc_pnl(pos["direction"], pos["entry"], price, pos["lot_size"], symbol)
+        report_trade_closed(trade_id, price, pnl)
+        today_pnl += pnl
+        del open_trades[trade_id]
+        log(
+            "INFO",
+            "mock",
+            f"Manual close: {pos['direction']} @ {pos['entry']:.2f} → {price:.2f} | P&L ${pnl:+.2f}",
+        )
+
+
+def _open_paper_trade(cfg: dict, signal: dict, lot_size: float) -> None:
+    global mock_ticket_seq
+
+    mock_ticket_seq += 1
+    trade_id = report_trade_opened(
+        account_id=cfg["account_id"],
+        signal=signal,
+        ticket=mock_ticket_seq,
+        lot_size=lot_size,
+    )
+    if trade_id:
+        open_trades[trade_id] = {
+            "entry": signal["entry"],
+            "sl": signal["sl"],
+            "tp": signal["tp"],
+            "direction": signal["direction"],
+            "lot_size": lot_size,
+        }
+        log(
+            "INFO",
+            "mock",
+            f"Paper order: {signal['direction']} {signal['symbol']} @ {signal['entry']:.2f} "
+            f"| SL {signal['sl']:.2f} TP {signal['tp']:.2f} | {lot_size} lots",
+        )
+
 
 def main():
-    global peak_equity, today_pnl, running
+    global peak_equity, today_pnl, last_heartbeat, running
 
-    log("INFO", "mock", "Mock bot starting (macOS — no MT5)")
+    log("INFO", "mock", "Paper bot starting — live XAUUSD data + real strategy")
 
     try:
         cfg = load_bot_config()
@@ -100,129 +182,150 @@ def main():
         log("CRITICAL", "mock", str(e))
         sys.exit(1)
 
-    balance = cfg.get("balance", 500000.0)
-    equity = balance
-    peak_equity = balance
-    account_id = cfg["account_id"]
+    symbol = cfg["symbol"]
+    base_balance = cfg.get("balance", 500_000.0)
 
-    HEARTBEAT_EVERY = 5       # seconds between heartbeats
-    SIGNAL_EVERY = 45         # seconds between trade signals
-    CLOSE_AFTER = 90          # seconds before auto-close
-    last_hb = 0.0
-    last_signal = 0.0
-    iteration = 0
+    # Restore today_pnl, all-time P&L and peak equity from closed trade history
+    state = restore_session_state(base_balance)
+    today_pnl = state["today_pnl"]
+    balance = base_balance + state["total_pnl"]
+    peak_equity = state["peak_equity"]
 
-    log("INFO", "mock", f"Account ${balance:,.0f} | Symbol {cfg['symbol']} | R:R {cfg['min_rr']}")
+    # Verify market data is available
+    probe = get_current_price(symbol)
+    if probe is None:
+        log("CRITICAL", "mock", "Cannot fetch live XAUUSD price. Check internet / pip install yfinance")
+        sys.exit(1)
+
+    log("INFO", "mock", f"Live {symbol} ≈ ${probe:,.2f} | Balance ${balance:,.2f} | Today P&L ${today_pnl:+.2f} | {cfg['timeframe']}")
 
     while running:
         try:
-            # ── Reload config each loop ────────────────────────────────────────
             cfg = load_bot_config()
-            balance = cfg.get("balance", balance)
+            symbol = cfg["symbol"]
+            base_balance = cfg.get("balance", base_balance)
+            guard = RiskGuard(cfg)
 
-            # ── Dashboard command ──────────────────────────────────────────────
             cmd = get_bot_command()
 
             if cmd == "STOPPED":
-                # Process stays alive — just idle until user clicks Start in dashboard
-                send_heartbeat(equity, balance, today_pnl, peak_equity, len(open_trades), "STOPPED")
-                time.sleep(5)
-                continue
-
-            if cmd in ("DAILY_LOCK", "ERROR"):
-                send_heartbeat(equity, balance, today_pnl, peak_equity, len(open_trades), cmd)
+                price = get_current_price(symbol) or balance
+                equity = balance + today_pnl + _floating_pnl(symbol, price)
+                send_heartbeat(
+                    equity, balance, today_pnl, peak_equity,
+                    len(open_trades), "STOPPED", bot_mode=BOT_MODE,
+                )
                 time.sleep(10)
                 continue
 
-            if cmd == "PAUSED":
-                send_heartbeat(equity, balance, today_pnl, peak_equity, len(open_trades), "PAUSED")
-                time.sleep(5)
+            if cmd in ("DAILY_LOCK", "ERROR"):
+                price = get_current_price(symbol) or balance
+                equity = balance + today_pnl + _floating_pnl(symbol, price)
+                send_heartbeat(
+                    equity, balance, today_pnl, peak_equity,
+                    len(open_trades), cmd, bot_mode=BOT_MODE,
+                )
+                time.sleep(30)
                 continue
 
-            # ── Simulate equity drift ──────────────────────────────────────────
-            equity = sim_equity(balance)
+            if cmd == "PAUSED":
+                price = get_current_price(symbol) or balance
+                equity = balance + today_pnl + _floating_pnl(symbol, price)
+                send_heartbeat(
+                    equity, balance, today_pnl, peak_equity,
+                    len(open_trades), "PAUSED", bot_mode=BOT_MODE,
+                )
+                time.sleep(10)
+                continue
+
+            # ── Live price + OHLCV ────────────────────────────────────────────
+            price = get_current_price(symbol)
+            df = get_ohlcv(symbol, cfg["timeframe"], bars=200)
+
+            if price is None or df is None or len(df) < 60:
+                log("WARNING", "mock", "Waiting for market data…")
+                time.sleep(POLL_SECONDS)
+                continue
+
+            last_bar = df.iloc[-1]
+            bar_high = float(last_bar["high"])
+            bar_low = float(last_bar["low"])
+
+            # Check paper SL/TP against latest bar range + current price
+            _check_paper_exits(symbol, price, max(price, bar_high), min(price, bar_low))
+
+            # Check for manual close requests from the dashboard
+            _check_manual_close_requests(symbol, price)
+
+            equity = balance + today_pnl + _floating_pnl(symbol, price)
             if equity > peak_equity:
                 peak_equity = equity
 
-            # ── Auto-close old fake trades ─────────────────────────────────────
             now = time.time()
-            to_close = [
-                tid for tid, t in open_trades.items()
-                if now - t["open_time"] >= CLOSE_AFTER
-            ]
-            for tid in to_close:
-                t = open_trades.pop(tid)
-                close_price = sim_price()
-                # 55% win rate with realistic P&L
-                win = random.random() < 0.55
-                if win:
-                    close_price = t["tp"] + random.uniform(-2, 2)
-                    pnl = round((close_price - t["entry"]) * t["lot_size"] * 100, 2)
-                else:
-                    close_price = t["sl"] + random.uniform(-1, 1)
-                    pnl = round((close_price - t["entry"]) * t["lot_size"] * 100, 2)
-
-                today_pnl += pnl
-                report_trade_closed(tid, round(close_price, 2), pnl)
-                log("INFO", "mock", f"Trade closed: pnl=${pnl:+.2f} | today total=${today_pnl:+.2f}")
-
-            # ── Heartbeat ─────────────────────────────────────────────────────
-            if now - last_hb >= HEARTBEAT_EVERY:
-                send_heartbeat(equity, balance, today_pnl, peak_equity, len(open_trades), "RUNNING")
-                last_hb = now
-
-            # ── Signal check (only when RUNNING and under trade limit) ─────────
-            max_trades = cfg.get("max_open_trades", 1)
-            if len(open_trades) < max_trades and now - last_signal >= SIGNAL_EVERY:
-                signal = generate_signal(cfg)
-
-                # Quick risk check
-                daily_loss_limit = balance * (cfg.get("max_daily_loss_pct", 1.0) / 100)
-                if today_pnl <= -daily_loss_limit:
-                    log("WARNING", "mock", f"Daily loss limit hit (${today_pnl:.2f}). Skipping signal.")
-                    last_signal = now
-                    time.sleep(2)
-                    continue
-
-                # Mock lot size (0.1–0.5 range)
-                lot_size = round(random.uniform(0.1, 0.3), 2)
-
-                trade_id = report_trade_opened(
-                    account_id=account_id,
-                    signal=signal,
-                    ticket=random.randint(100000, 999999),
-                    lot_size=lot_size,
+            if now - last_heartbeat >= HEARTBEAT_SECONDS:
+                send_heartbeat(
+                    equity, balance, today_pnl, peak_equity,
+                    len(open_trades), "RUNNING", bot_mode=BOT_MODE,
                 )
+                last_heartbeat = now
 
-                if trade_id:
-                    open_trades[trade_id] = {
-                        "entry": signal["entry"],
-                        "sl": signal["sl"],
-                        "tp": signal["tp"],
-                        "direction": signal["direction"],
-                        "lot_size": lot_size,
-                        "open_time": now,
-                    }
-                    log("INFO", "mock", f"Mock trade opened: {signal['direction']} @ {signal['entry']} | SL:{signal['sl']} TP:{signal['tp']}")
+            # ── Strategy (same as main.py) ──────────────────────────────────
+            if len(open_trades) >= cfg["max_open_trades"]:
+                time.sleep(POLL_SECONDS)
+                continue
 
-                last_signal = now
+            signal = check_signal(df, cfg)
+            if not signal:
+                time.sleep(POLL_SECONDS)
+                continue
+
+            log("INFO", "strategy", f"Signal: {signal}")
+
+            allowed, reason = guard.check_all(
+                entry=signal["entry"],
+                sl=signal["sl"],
+                tp=signal["tp"],
+                direction=signal["direction"],
+                open_trades_count=len(open_trades),
+                equity=equity,
+            )
+
+            if not allowed:
+                log("WARNING", "risk", f"Signal rejected: {reason}")
+                time.sleep(POLL_SECONDS)
+                continue
+
+            lot_size = calculate_lot_size(
+                symbol=symbol,
+                risk_pct=cfg["risk_per_trade_pct"],
+                balance=balance,
+                entry=signal["entry"],
+                sl=signal["sl"],
+            )
+
+            signal["symbol"] = symbol
+            _open_paper_trade(cfg, signal, lot_size)
 
         except KeyboardInterrupt:
             break
         except Exception as e:
             log("ERROR", "mock", f"Loop error: {e}")
-            time.sleep(3)
+            time.sleep(5)
 
-        iteration += 1
-        time.sleep(2)
+        time.sleep(POLL_SECONDS)
 
-    # Cleanup: close any remaining fake trades
-    for tid, t in list(open_trades.items()):
-        pnl = round(random.uniform(-200, 400), 2)
-        report_trade_closed(tid, sim_price(), pnl)
+    # Cleanup open paper trades at shutdown
+    sym = cfg["symbol"]
+    price = get_current_price(sym) or 0
+    for trade_id, pos in list(open_trades.items()):
+        if price > 0:
+            pnl = calc_pnl(pos["direction"], pos["entry"], price, pos["lot_size"], sym)
+            report_trade_closed(trade_id, price, pnl)
+    open_trades.clear()
 
-    send_heartbeat(equity, balance, today_pnl, peak_equity, 0, "STOPPED")
-    log("INFO", "mock", "Mock bot stopped.")
+    final_equity = base_balance + state["total_pnl"] + today_pnl
+    send_heartbeat(final_equity, balance, today_pnl, peak_equity, 0, "STOPPED", bot_mode=BOT_MODE)
+    log("INFO", "mock", "Paper bot stopped.")
 
 
 if __name__ == "__main__":
