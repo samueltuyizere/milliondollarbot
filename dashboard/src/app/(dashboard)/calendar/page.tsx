@@ -1,267 +1,253 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Calendar, AlertOctagon } from "lucide-react";
-import { toast } from "sonner";
+import { CalendarClock, Palmtree, RefreshCw, AlertTriangle, Info } from "lucide-react";
 import { SectionHeader } from "@/components/ui/section-header";
-import { EmptyState } from "@/components/ui/empty-state";
-import { AlertBanner } from "@/components/ui/alert-banner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 
-type Impact = "LOW" | "MEDIUM" | "HIGH";
-
-const IMPACT_STYLE: Record<Impact, string> = {
-  HIGH:   "text-[--loss] bg-[--loss]/10 border-[--loss]/20",
-  MEDIUM: "text-amber-400 bg-amber-400/10 border-amber-400/20",
-  LOW:    "text-muted-foreground bg-muted border-border",
+type NewsEvent = {
+  id: string;
+  title: string;
+  currency: string;
+  impact: string;
+  eventTime: string;
+  skipTrading: boolean;
+  minutesBefore: number;
+  minutesAfter: number;
 };
 
-interface NewsEvent {
-  id: string; title: string; currency: string; impact: Impact;
-  eventTime: string; skipTrading: boolean; minutesBefore: number; minutesAfter: number;
+type Holiday = {
+  id: string;
+  country: string;
+  name: string;
+  date: string;
+  description?: string;
+};
+
+type FilterImpact = "ALL" | "HIGH" | "MEDIUM" | "LOW";
+
+const IMPACT_CONFIG = {
+  HIGH:   { label: "High",   bg: "bg-red-500/10",    border: "border-red-500/25",    text: "text-red-400",    badge: "bg-red-500/20 text-red-400" },
+  MEDIUM: { label: "Medium", bg: "bg-amber-500/10",  border: "border-amber-500/25",  text: "text-amber-400",  badge: "bg-amber-500/20 text-amber-400" },
+  LOW:    { label: "Low",    bg: "bg-muted/40",       border: "border-border",        text: "text-muted-foreground", badge: "bg-muted text-muted-foreground" },
+};
+
+function impactIcon(impact: string) {
+  if (impact === "HIGH")   return <AlertTriangle className="w-3.5 h-3.5" />;
+  if (impact === "MEDIUM") return <Info className="w-3.5 h-3.5" />;
+  return null;
 }
-interface BankHoliday {
-  id: string; country: string; name: string; date: string; description?: string | null;
+
+function groupByDay(events: NewsEvent[], holidays: Holiday[]) {
+  const map: Record<string, { date: Date; news: NewsEvent[]; holidays: Holiday[] }> = {};
+
+  for (const ev of events) {
+    const d = new Date(ev.eventTime);
+    const key = d.toISOString().slice(0, 10);
+    if (!map[key]) map[key] = { date: new Date(key + "T00:00:00Z"), news: [], holidays: [] };
+    map[key].news.push(ev);
+  }
+  for (const h of holidays) {
+    const key = new Date(h.date).toISOString().slice(0, 10);
+    if (!map[key]) map[key] = { date: new Date(key + "T00:00:00Z"), news: [], holidays: [] };
+    map[key].holidays.push(h);
+  }
+
+  return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
 }
 
-// ─── News tab ─────────────────────────────────────────────────────────────────
+function DayLabel({ date }: { date: Date }) {
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
 
-function NewsTab() {
-  const [events, setEvents] = useState<NewsEvent[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({
-    title: "", currency: "USD", impact: "HIGH" as Impact,
-    eventTime: "", skipTrading: true, minutesBefore: 30, minutesAfter: 30,
-  });
+  const isToday    = date.toISOString().slice(0, 10) === today.toISOString().slice(0, 10);
+  const isTomorrow = date.toISOString().slice(0, 10) === tomorrow.toISOString().slice(0, 10);
 
-  async function load() {
-    try { setEvents((await fetch("/api/calendar/news").then(r => r.json())).events ?? []); } catch {}
-  }
-  useEffect(() => { load(); }, []);
-
-  async function add() {
-    if (!form.title || !form.eventTime) { toast.error("Title and time are required"); return; }
-    try {
-      const j = await fetch("/api/calendar/news", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
-      }).then(r => r.json());
-      if (j.ok) { toast.success("Event added"); setAdding(false); setForm(f => ({ ...f, title: "", eventTime: "" })); load(); }
-      else toast.error(j.error ?? "Failed");
-    } catch { toast.error("Failed"); }
-  }
-
-  async function remove(id: string) {
-    try { await fetch(`/api/calendar/news/${id}`, { method: "DELETE" }); toast.success("Removed"); load(); }
-    catch { toast.error("Failed"); }
-  }
+  const label = isToday ? "Today" : isTomorrow ? "Tomorrow" : date.toLocaleDateString([], { weekday: "long" });
+  const sub   = date.toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" });
 
   return (
-    <div className="space-y-4">
-      <AlertBanner
-        tone="info"
-        title="News blackout window"
-        description="When a HIGH-impact event has skip_trading=on, the bot won't place new trades within the configured minutes before/after."
-      />
-
-      <SectionHeader title="Scheduled Events" description={`${events.length} events`}>
-        <Button size="sm" onClick={() => setAdding(!adding)} variant={adding ? "secondary" : "default"} className="h-7 gap-1.5 text-xs">
-          <Plus className="w-3 h-3" />{adding ? "Cancel" : "Add Event"}
-        </Button>
-      </SectionHeader>
-
-      {adding && (
-        <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-          <h3 className="text-sm font-medium">New news event</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Title *</Label>
-              <Input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. US CPI" className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Currency</Label>
-              <Input value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))} className="h-8 text-sm font-mono" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Impact</Label>
-              <select value={form.impact} onChange={e => setForm(f => ({ ...f, impact: e.target.value as Impact }))}
-                className="w-full h-8 rounded-md border border-input bg-background px-3 text-sm">
-                <option value="HIGH">HIGH</option>
-                <option value="MEDIUM">MEDIUM</option>
-                <option value="LOW">LOW</option>
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Event time (UTC) *</Label>
-              <Input type="datetime-local" value={form.eventTime} onChange={e => setForm(f => ({ ...f, eventTime: e.target.value }))} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Skip before (min)</Label>
-              <Input type="number" value={form.minutesBefore} onChange={e => setForm(f => ({ ...f, minutesBefore: parseInt(e.target.value) }))} className="h-8 text-sm font-mono" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Skip after (min)</Label>
-              <Input type="number" value={form.minutesAfter} onChange={e => setForm(f => ({ ...f, minutesAfter: parseInt(e.target.value) }))} className="h-8 text-sm font-mono" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch checked={form.skipTrading} onCheckedChange={v => setForm(f => ({ ...f, skipTrading: v }))} />
-            <Label className="text-xs">Skip trading during this event</Label>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={add} className="gap-1.5"><Plus className="w-3 h-3" />Save</Button>
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
-          </div>
-        </div>
-      )}
-
-      {events.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card">
-          <EmptyState icon={<AlertOctagon className="w-4 h-4" />} title="No news events" description="Add high-impact events to prevent trading during volatile periods." />
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
-          {events.map(ev => (
-            <div key={ev.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
-              <AlertOctagon className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{ev.title}</p>
-                <p className="text-xs text-muted-foreground tabular">
-                  {new Date(ev.eventTime).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                  {" · "}±{ev.minutesBefore}min · {ev.currency}
-                </p>
-              </div>
-              <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium border", IMPACT_STYLE[ev.impact])}>
-                {ev.impact}
-              </span>
-              <span className={cn("px-2 py-0.5 rounded-full text-xs border",
-                ev.skipTrading ? "text-[--loss] bg-[--loss]/10 border-[--loss]/20" : "text-muted-foreground bg-muted border-border")}>
-                {ev.skipTrading ? "Skip" : "Allow"}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => remove(ev.id)}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-[--loss] shrink-0">
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
+    <div className="flex items-center gap-3 mb-3">
+      <div className={cn(
+        "flex flex-col items-center justify-center w-12 h-12 rounded-lg border shrink-0",
+        isToday ? "bg-primary/10 border-primary/30" : "bg-card border-border"
+      )}>
+        <span className={cn("text-[10px] font-bold uppercase tracking-wide", isToday ? "text-primary" : "text-muted-foreground")}>
+          {date.toLocaleDateString([], { month: "short" })}
+        </span>
+        <span className={cn("text-lg font-bold leading-tight", isToday ? "text-primary" : "text-foreground")}>
+          {date.getUTCDate()}
+        </span>
+      </div>
+      <div>
+        <p className={cn("text-sm font-semibold", isToday && "text-primary")}>{label}</p>
+        <p className="text-xs text-muted-foreground">{sub}</p>
+      </div>
     </div>
   );
 }
-
-// ─── Holidays tab ─────────────────────────────────────────────────────────────
-
-function HolidaysTab() {
-  const [holidays, setHolidays] = useState<BankHoliday[]>([]);
-  const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ country: "US", name: "", date: "", description: "" });
-
-  async function load() {
-    try { setHolidays((await fetch("/api/calendar/holidays").then(r => r.json())).holidays ?? []); } catch {}
-  }
-  useEffect(() => { load(); }, []);
-
-  async function add() {
-    if (!form.name || !form.date) { toast.error("Name and date required"); return; }
-    try {
-      const j = await fetch("/api/calendar/holidays", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
-      }).then(r => r.json());
-      if (j.ok) { toast.success("Holiday added"); setAdding(false); setForm(f => ({ ...f, name: "", date: "" })); load(); }
-      else toast.error(j.error ?? "Failed");
-    } catch { toast.error("Failed"); }
-  }
-
-  async function remove(id: string) {
-    try { await fetch(`/api/calendar/holidays/${id}`, { method: "DELETE" }); toast.success("Removed"); load(); }
-    catch { toast.error("Failed"); }
-  }
-
-  return (
-    <div className="space-y-4">
-      <AlertBanner tone="info" title="Bank holidays" description="The bot will not place trades on these dates." />
-
-      <SectionHeader title="Holidays" description={`${holidays.length} entries`}>
-        <Button size="sm" onClick={() => setAdding(!adding)} variant={adding ? "secondary" : "default"} className="h-7 gap-1.5 text-xs">
-          <Plus className="w-3 h-3" />{adding ? "Cancel" : "Add Holiday"}
-        </Button>
-      </SectionHeader>
-
-      {adding && (
-        <div className="rounded-lg border border-border bg-card p-4 space-y-4">
-          <h3 className="text-sm font-medium">New bank holiday</h3>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Country</Label>
-              <Input value={form.country} onChange={e => setForm(f => ({ ...f, country: e.target.value }))} className="h-8 text-sm font-mono" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Holiday name *</Label>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Christmas Day" className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Date *</Label>
-              <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="h-8 text-sm" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Notes (optional)</Label>
-              <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="h-8 text-sm" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={add} className="gap-1.5"><Plus className="w-3 h-3" />Save</Button>
-            <Button size="sm" variant="ghost" onClick={() => setAdding(false)}>Cancel</Button>
-          </div>
-        </div>
-      )}
-
-      {holidays.length === 0 ? (
-        <div className="rounded-lg border border-border bg-card">
-          <EmptyState icon={<Calendar className="w-4 h-4" />} title="No bank holidays" description="Add dates when the bot should not trade." />
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
-          {holidays.map(h => (
-            <div key={h.id} className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
-              <Calendar className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">{h.name}</p>
-                <p className="text-xs text-muted-foreground tabular">
-                  {new Date(h.date).toLocaleDateString([], { year: "numeric", month: "long", day: "numeric" })}
-                  {h.description ? ` · ${h.description}` : ""}
-                </p>
-              </div>
-              <span className="text-xs font-mono text-muted-foreground px-2 py-0.5 bg-muted rounded">{h.country}</span>
-              <Button variant="ghost" size="sm" onClick={() => remove(h.id)}
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-[--loss] shrink-0">
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
+  const [news, setNews]     = useState<NewsEvent[]>([]);
+  const [holidays, setHols] = useState<Holiday[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter]   = useState<FilterImpact>("ALL");
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+
+  async function load() {
+    setLoading(true);
+    try {
+      // Fetch next 7 days by calling the API twice (48h) — we'll expand the API
+      const res = await fetch("/api/events?days=7");
+      const data = await res.json();
+      setNews(data.newsEvents ?? []);
+      setHols(data.holidays ?? []);
+      setLastSync(new Date());
+    } catch {}
+    setLoading(false);
+  }
+
+  useEffect(() => { load(); }, []);
+
+  const filteredNews = filter === "ALL" ? news : news.filter((e) => e.impact === filter);
+  const groups = groupByDay(filteredNews, holidays);
+
+  const counts = {
+    HIGH:   news.filter((e) => e.impact === "HIGH").length,
+    MEDIUM: news.filter((e) => e.impact === "MEDIUM").length,
+    LOW:    news.filter((e) => e.impact === "LOW").length,
+  };
+
   return (
-    <div className="space-y-6 max-w-2xl">
-      <Tabs defaultValue="news">
-        <TabsList className="h-9 p-1 bg-muted">
-          <TabsTrigger value="news"     className="h-7 text-xs">News Events</TabsTrigger>
-          <TabsTrigger value="holidays" className="h-7 text-xs">Bank Holidays</TabsTrigger>
-        </TabsList>
-        <TabsContent value="news"     className="mt-4"><NewsTab /></TabsContent>
-        <TabsContent value="holidays" className="mt-4"><HolidaysTab /></TabsContent>
-      </Tabs>
+    <div className="space-y-6">
+      <SectionHeader
+        title="Economic Calendar"
+        description="Upcoming news events and bank holidays affecting XAUUSD trading."
+        action={
+          <Button variant="ghost" size="sm" onClick={load} className="h-7 text-xs gap-1.5" disabled={loading}>
+            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+            {lastSync ? `Synced ${lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Refresh"}
+          </Button>
+        }
+      />
+
+      {/* Impact filter tabs */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {(["ALL", "HIGH", "MEDIUM", "LOW"] as FilterImpact[]).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-xs font-semibold transition-colors border",
+              filter === f
+                ? "bg-primary/10 border-primary/40 text-primary"
+                : "bg-card border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+            )}
+          >
+            {f === "ALL" ? `All (${news.length})` : f === "HIGH" ? `High (${counts.HIGH})` : f === "MEDIUM" ? `Medium (${counts.MEDIUM})` : `Low (${counts.LOW})`}
+          </button>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> High — trading blocked ±30 min</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Medium — monitor only</span>
+        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-300 inline-block" /> Holiday — trading blocked all day</span>
+      </div>
+
+      {/* Events grouped by day */}
+      {loading ? (
+        <div className="space-y-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="space-y-2 animate-pulse">
+              <div className="h-12 w-48 rounded-lg bg-muted" />
+              <div className="h-14 rounded-lg bg-muted" />
+              <div className="h-14 rounded-lg bg-muted" />
+            </div>
+          ))}
+        </div>
+      ) : groups.length === 0 ? (
+        <EmptyState
+          icon={<CalendarClock className="w-8 h-8" />}
+          title="No upcoming events"
+          description="No high or medium impact events found for the next 7 days. The bot will trade normally."
+        />
+      ) : (
+        <div className="space-y-8">
+          {groups.map(([key, { date, news: dayNews, holidays: dayHols }]) => (
+            <div key={key}>
+              <DayLabel date={date} />
+              <div className="space-y-2 ml-0 lg:ml-16">
+                {/* Bank holidays first */}
+                {dayHols.map((h) => (
+                  <div
+                    key={h.id}
+                    className="flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-500/[0.06] border border-amber-500/20"
+                  >
+                    <Palmtree className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-amber-300">{h.name}</p>
+                      {h.description && h.description !== h.name && (
+                        <p className="text-xs text-muted-foreground">{h.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-semibold bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded">
+                        {h.country === "GB" ? "🇬🇧 UK" : "🇺🇸 US"} Holiday
+                      </span>
+                      <span className="text-xs text-red-400 font-medium">Trading blocked</span>
+                    </div>
+                  </div>
+                ))}
+
+                {/* News events */}
+                {dayNews.map((ev) => {
+                  const cfg = IMPACT_CONFIG[ev.impact as keyof typeof IMPACT_CONFIG] ?? IMPACT_CONFIG.LOW;
+                  const time = new Date(ev.eventTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+                  const localTime = new Date(ev.eventTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                  return (
+                    <div
+                      key={ev.id}
+                      className={cn(
+                        "flex items-center gap-3 px-4 py-3 rounded-lg border",
+                        cfg.bg, cfg.border
+                      )}
+                    >
+                      <div className="flex flex-col items-center w-12 shrink-0 text-center">
+                        <span className="text-xs font-mono font-semibold text-foreground">{localTime}</span>
+                        <span className="text-[10px] text-muted-foreground">{time} UTC</span>
+                      </div>
+                      <div className={cn("w-px h-8 rounded-full shrink-0", ev.impact === "HIGH" ? "bg-red-500/40" : "bg-amber-500/30")} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium leading-snug truncate">{ev.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{ev.currency}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                        <span className={cn("inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded", cfg.badge)}>
+                          {impactIcon(ev.impact)}
+                          {cfg.label}
+                        </span>
+                        {ev.skipTrading && (
+                          <span className="text-xs text-red-400 font-medium whitespace-nowrap">
+                            blocked ±{ev.minutesBefore}m
+                          </span>
+                        )}
+                        {!ev.skipTrading && (
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">monitor only</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -8,20 +8,23 @@ export async function GET(req: NextRequest) {
   if (denied) return denied;
 
   try {
-    const now = new Date();
-    const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+    const { searchParams } = new URL(req.url);
+    const days = Math.min(Math.max(parseInt(searchParams.get("days") ?? "2"), 1), 30);
+
+    const now   = new Date();
+    const until = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
 
     const [newsEvents, holidays] = await Promise.all([
       prisma.newsEvent.findMany({
-        where: { eventTime: { gte: now, lte: in48h } },
+        where: { eventTime: { gte: now, lte: until } },
         orderBy: { eventTime: "asc" },
-        take: 20,
+        take: 100,
       }),
       prisma.bankHoliday.findMany({
         where: {
           date: {
             gte: new Date(now.toISOString().slice(0, 10)),
-            lte: new Date(in48h.toISOString().slice(0, 10) + "T23:59:59Z"),
+            lte: new Date(until.toISOString().slice(0, 10) + "T23:59:59Z"),
           },
         },
         orderBy: { date: "asc" },
