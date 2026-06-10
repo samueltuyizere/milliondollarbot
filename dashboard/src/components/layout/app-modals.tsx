@@ -18,7 +18,7 @@ export function AppModals() {
     <>
       <Dialog open={modal === "bot"} onOpenChange={(open) => !open && closeModal()}>
         <DialogContent
-          className="sm:max-w-xl max-h-[90vh] overflow-y-auto p-0 gap-0 bg-card"
+          className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 gap-0 bg-card"
           showCloseButton
         >
           <DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
