@@ -108,19 +108,19 @@ cmd     = sys.argv[4:]
 # This creates a new process group / session so the child is immune to SIGHUP
 # when the parent shell exits, without the architecture side-effects of a
 # manual double-fork on macOS M1 (multi-threaded fork resets to x86_64).
-  with open(logfile, 'a') as log_f:
+with open(logfile, 'a') as log_f:
     p = subprocess.Popen(
         cmd,
         cwd=cwd,
         stdout=log_f,
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
-        start_new_session=True,   # new process group + session; immune to SIGHUP
+        start_new_session=True,
         env={**os.environ},
     )
 
-  with open(pidfile, 'w') as f:
-      f.write(str(p.pid))
+with open(pidfile, 'w') as f:
+    f.write(str(p.pid))
 PYEOF
 }
 
