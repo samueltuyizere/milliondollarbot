@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X, Target } from "lucide-react";
+import { Activity, DollarSign, TrendingDown, TrendingUp, BarChart2, RefreshCw, X, Target, CalendarClock, Palmtree } from "lucide-react";
 // X kept for the close confirm dialog
 import { TradeDetailModal } from "@/components/ui/trade-detail-modal";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -26,6 +26,9 @@ import {
 } from "@/lib/charts/trade-stats";
 import { cn } from "@/lib/utils";
 import type { DashboardStats, TradeRow } from "@/types";
+
+type NewsEvent = { id: string; title: string; currency: string; impact: string; eventTime: string; skipTrading: boolean; minutesBefore: number; minutesAfter: number };
+type Holiday   = { id: string; country: string; name: string; date: string };
 
 function formatTradeDate(iso: string) {
   return new Date(iso).toLocaleDateString([], {
@@ -64,6 +67,7 @@ export default function DashboardPage() {
   const [closeTarget, setCloseTarget] = useState<TradeRow | null>(null);
   const [detailTrade, setDetailTrade] = useState<TradeRow | null>(null);
   const [refPrice, setRefPrice] = useState<number | null>(null);
+  const [events, setEvents] = useState<{ newsEvents: NewsEvent[]; holidays: Holiday[] }>({ newsEvents: [], holidays: [] });
 
   async function confirmManualClose() {
     const target = closeTarget;
@@ -80,14 +84,16 @@ export default function DashboardPage() {
 
   async function fetchData() {
     try {
-      const [s, t, c] = await Promise.all([
+      const [s, t, c, ev] = await Promise.all([
         fetch("/api/bot/status").then((r) => r.json()),
         fetch("/api/trades?limit=10").then((r) => r.json()),
         fetch("/api/trades?limit=100").then((r) => r.json()),
+        fetch("/api/events").then((r) => r.json()),
       ]);
       setStats(s.status ?? null);
       setTrades(t.trades ?? []);
       setChartTrades(c.trades ?? []);
+      setEvents({ newsEvents: ev.newsEvents ?? [], holidays: ev.holidays ?? [] });
       setLastRefresh(new Date());
     } catch {}
     setLoading(false);
@@ -214,6 +220,44 @@ export default function DashboardPage() {
         </div>
       </div>
 
+
+      {/* Upcoming Events */}
+      {(events.newsEvents.length > 0 || events.holidays.length > 0) && (
+        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Upcoming Events <span className="text-xs text-muted-foreground font-normal">(next 48 h)</span></span>
+          </div>
+          <div className="space-y-1.5">
+            {events.holidays.map((h) => (
+              <div key={h.id} className="flex items-center gap-3 px-3 py-2 rounded-md bg-amber-500/[0.06] border border-amber-500/20 text-sm">
+                <Palmtree className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span className="font-medium text-amber-300">{h.name}</span>
+                <span className="text-muted-foreground text-xs ml-auto">{h.country} · {new Date(h.date).toLocaleDateString([], { month: "short", day: "numeric" })}</span>
+              </div>
+            ))}
+            {events.newsEvents.map((ev) => (
+              <div key={ev.id} className={cn(
+                "flex items-center gap-3 px-3 py-2 rounded-md border text-sm",
+                ev.impact === "HIGH"
+                  ? "bg-red-500/[0.05] border-red-500/20"
+                  : "bg-muted/40 border-border"
+              )}>
+                <span className={cn(
+                  "text-[10px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0",
+                  ev.impact === "HIGH" ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"
+                )}>{ev.impact}</span>
+                <span className="font-medium truncate">{ev.title}</span>
+                <span className="text-muted-foreground text-xs shrink-0">{ev.currency}</span>
+                <span className="text-muted-foreground text-xs ml-auto shrink-0">
+                  {new Date(ev.eventTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {ev.skipTrading && <span className="ml-1.5 text-red-400">· blocked ±{ev.minutesBefore}m</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent trades table */}
       <div>

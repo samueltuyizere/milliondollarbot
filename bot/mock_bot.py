@@ -64,14 +64,18 @@ from utils.market_data import get_ohlcv, get_current_price
 from utils.lot_sizing import calculate_lot_size, calc_pnl
 from utils.db_writer import report_trade_opened, report_trade_closed, send_heartbeat, restore_session_state
 from utils.logger import log
+import utils.news_calendar as news_calendar
+import utils.holidays as holidays
 
 POLL_SECONDS = int(os.environ.get("POLL_SECONDS", "15"))
 HEARTBEAT_SECONDS = int(os.environ.get("HEARTBEAT_SECONDS", "10"))
+NEWS_SYNC_SECONDS = 3600  # re-sync news calendar every hour
 
 running = True
 peak_equity: float = 0.0
 today_pnl: float = 0.0
 last_heartbeat = 0.0
+last_news_sync = 0.0
 
 
 def _init_ticket_seq() -> int:
@@ -251,6 +255,22 @@ def main():
 
     log("INFO", "mock", "Paper bot starting — live XAUUSD data + real strategy")
 
+    # ── Sync news calendar + bank holidays at startup ─────────────────────
+    try:
+        n = news_calendar.sync()
+        log("INFO", "mock", f"News calendar synced — {n} new event(s) loaded")
+    except Exception as e:
+        log("WARNING", "mock", f"News sync failed (non-fatal): {e}")
+
+    try:
+        h = holidays.sync()
+        log("INFO", "mock", f"Bank holidays synced — {h} new record(s) loaded")
+    except Exception as e:
+        log("WARNING", "mock", f"Holiday sync failed (non-fatal): {e}")
+
+    global last_news_sync
+    last_news_sync = time.time()
+
     try:
         cfg = load_bot_config()
     except RuntimeError as e:
@@ -340,6 +360,16 @@ def main():
                 peak_equity = equity
 
             now = time.time()
+
+            # Hourly news calendar refresh
+            if now - last_news_sync >= NEWS_SYNC_SECONDS:
+                try:
+                    n = news_calendar.sync()
+                    log("INFO", "mock", f"News calendar refreshed — {n} new event(s)")
+                except Exception as e:
+                    log("WARNING", "mock", f"News refresh failed: {e}")
+                last_news_sync = now
+
             if now - last_heartbeat >= HEARTBEAT_SECONDS:
                 send_heartbeat(
                     equity, balance, today_pnl, peak_equity,
